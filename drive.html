@@ -1,0 +1,1372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Driving School</title>
+<style>
+  :root { --panel: rgba(14,16,21,.8); --fg: #eef1f5; --dim: #98a2b0; --ok: #3ccf7a; --warn: #ffb020; --bad: #ff4d4f; --acc: #5aa9ff; --star: #ffd24a; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  #view { display: block; }
+  .panel { position: fixed; background: var(--panel); border-radius: 12px; padding: 10px 14px; backdrop-filter: blur(6px); }
+  #mirror { position: fixed; top: 10px; left: 50%; width: 360px; height: 90px; transform: translateX(-50%) scaleX(-1); border-radius: 16px; border: 4px solid #111; box-shadow: 0 2px 10px #0009; }
+  #coach { top: 116px; left: 50%; transform: translateX(-50%); text-align: center; width: min(640px, calc(100vw - 600px)); min-width: 300px; }
+  #coachMain { font-size: 18px; font-weight: 600; }
+  #coachSub { min-height: 1.3em; margin-top: 6px; font-size: 15px; }
+  #lesson { top: 12px; left: 12px; width: 270px; }
+  #lesson h3 { margin: 0; font-size: 15px; }
+  #lesson ol { margin: 6px 0 0; padding-left: 20px; }
+  #lesson li { color: var(--dim); margin: 3px 0; font-size: 13px; }
+  #lesson li.cur { color: var(--fg); font-weight: 600; }
+  #lesson li.done { color: var(--ok); }
+  #faults { top: 12px; right: 12px; width: 260px; }
+  #faults .f { margin: 3px 0; font-size: 13px; }
+  .minor { color: var(--warn); } .serious { color: var(--bad); } .good { color: var(--ok); }
+  #dash { bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; align-items: center; padding: 10px 18px; }
+  #spd { font-size: 40px; font-weight: 700; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+  .limit { width: 46px; height: 46px; border-radius: 50%; border: 6px solid var(--bad); background: #fff; color: #000; font-weight: 800; display: grid; place-items: center; font-size: 17px; box-sizing: border-box; }
+  #gear { font-size: 34px; font-weight: 800; width: 44px; text-align: center; }
+  .rpm { width: 170px; }
+  .rpmbar { height: 10px; background: #2a2f38; border-radius: 5px; overflow: hidden; position: relative; margin-top: 4px; }
+  .rpmbar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--acc); }
+  .rpmbar b { position: absolute; right: 0; top: 0; bottom: 0; width: 16%; background: #ff4d4f55; }
+  .ind { font-size: 28px; color: #3a3f48; line-height: 1; }
+  .ind.on { color: var(--ok); }
+  .ped { display: flex; gap: 5px; align-items: flex-end; }
+  .ped div { text-align: center; font-size: 10px; color: var(--dim); }
+  .ped span { display: block; width: 11px; height: 42px; background: #2a2f38; position: relative; border-radius: 3px; overflow: hidden; margin: 0 auto 2px; }
+  .ped i { position: absolute; bottom: 0; left: 0; right: 0; }
+  .small { font-size: 12px; color: var(--dim); }
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5,7,10,.76); }
+  .card { background: #151920; border-radius: 16px; padding: 22px 26px; width: min(580px, calc(100vw - 32px)); max-height: 90vh; overflow: auto; box-sizing: border-box; }
+  .card h1 { margin: 0 0 4px; font-size: 22px; }
+  .card h2 { margin: 16px 0 6px; font-size: 13px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .card ul { margin: 0; padding-left: 20px; } .card li { margin: 4px 0; }
+  .card button { display: block; width: 100%; margin: 6px 0; padding: 11px 14px; border: 0; border-radius: 10px; background: #252c38; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+  .card button:hover { background: #30394a; }
+  .card button:disabled { opacity: .45; cursor: default; }
+  .card button b { display: block; }
+  .card button.focus { outline: 3px solid var(--acc); outline-offset: 1px; }
+  .lvl { display: flex !important; justify-content: space-between; align-items: center; gap: 10px; }
+  .stars { color: var(--star); letter-spacing: 2px; white-space: nowrap; }
+  .seg { display: flex; gap: 8px; }
+  .seg button { text-align: center; }
+  .seg button.sel { background: var(--acc); color: #000; font-weight: 700; }
+  table.keys, table.met { width: 100%; font-size: 13px; border-collapse: collapse; }
+  table.keys td, table.met td { padding: 3px 0; }
+  table.keys td:first-child { color: var(--dim); width: 42%; }
+  table.met td:nth-child(2), table.met td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+  #laneG { bottom: 92px; left: 50%; transform: translateX(-50%); width: 340px; padding: 8px 12px; text-align: center; }
+  .lane { position: relative; height: 26px; border-radius: 6px; overflow: hidden; background: #2a2f38; }
+  .lane .mine { position: absolute; left: 0; width: 50%; top: 0; bottom: 0; background: #2f4a3a; }
+  .lane .opp { position: absolute; right: 0; width: 50%; top: 0; bottom: 0; background: #4a2f33; }
+  .lane .kerb { position: absolute; top: 0; bottom: 0; width: 4px; background: #ddd; }
+  .lane .cl { position: absolute; left: calc(50% - 1.5px); width: 3px; top: 0; bottom: 0; background: repeating-linear-gradient(#fff 0 5px, transparent 5px 9px); }
+  #carMark { position: absolute; top: 3px; bottom: 3px; width: 23.3%; border-radius: 4px; background: var(--ok); transition: background .15s; }
+  #laneTxt { margin-top: 4px; }
+  #laneG.off { opacity: .45; }
+  #stopG { bottom: 160px; left: 50%; transform: translateX(-50%); width: 340px; padding: 8px 12px; text-align: center; }
+  #stopNum { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .sbar { position: relative; height: 12px; background: #2a2f38; border-radius: 6px; margin-top: 4px; overflow: hidden; }
+  .sbar .zone { position: absolute; top: 0; bottom: 0; background: #3ccf7a55; }
+  .sbar .line { position: absolute; top: 0; bottom: 0; width: 3px; background: #ffd400; }
+  #sCar { position: absolute; top: 1px; bottom: 1px; width: 8px; border-radius: 3px; background: #fff; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<canvas id="mirror" width="360" height="90"></canvas>
+
+<div id="coach" class="panel"><div id="coachMain">Welcome</div><div id="coachSub"></div></div>
+<div id="lesson" class="panel"><h3 id="lessonTitle">—</h3><ol id="steps"></ol><div id="routeInfo" class="small"></div></div>
+<div id="faults" class="panel"><div><b>Mistakes</b> <span class="small">(that's how you learn)</span></div><div class="small">minor <span id="nMinor" class="minor">0</span> · serious <span id="nSerious" class="serious">0</span></div><div id="faultList"></div></div>
+
+<div id="stopG" class="panel hidden">
+  <div><span id="stopNum">–</span> <span class="small" id="stopLbl">to the line</span></div>
+  <div class="sbar"><div class="zone" style="left:calc(80% - 4%);width:8%"></div><div class="line" style="left:80%"></div><div id="sCar"></div></div>
+  <div class="small" id="stopTip"></div>
+</div>
+<div id="laneG" class="panel off">
+  <div class="lane"><div class="mine"></div><div class="opp"></div><div class="kerb" style="left:0"></div><div class="kerb" style="right:0"></div><div class="cl"></div><div id="carMark"></div></div>
+  <div id="laneTxt" class="small">lane gauge: drive along a road</div>
+</div>
+<div id="dash" class="panel">
+  <div class="ind" id="indL">◀</div>
+  <div class="limit">40</div>
+  <div><span id="spd">0</span> <span class="small">km/h</span></div>
+  <div class="rpm"><div class="small"><span id="rpmT">0</span> rpm · <span id="engT">engine off</span></div><div class="rpmbar"><b></b><i id="rpmB"></i></div><div class="small" id="modeT">manual</div></div>
+  <div id="gear">N</div>
+  <div class="ped">
+    <div><span><i id="pC" style="background:#c9a0ff"></i></span>C</div>
+    <div><span><i id="pB" style="background:var(--bad)"></i></span>B</div>
+    <div><span><i id="pA" style="background:var(--ok)"></i></span>A</div>
+  </div>
+  <div class="ind" id="indR">▶</div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="card">
+    <h1>Driving School</h1>
+    <div class="small">Drive on the left · right-hand-drive car · town limit 40 km/h · <span id="progTotal"></span></div>
+    <h2>Gearbox <span class="small">(D-pad ◀ ▶)</span></h2>
+    <div class="seg"><button id="mAuto">Automatic</button><button id="mManual">Manual</button></div>
+    <h2>Levels <span class="small">(★★ unlocks the next one)</span></h2>
+    <div id="levelList"></div>
+    <button id="btnFree" data-nav><b>Free drive</b><span class="small">No goals. Hints and mistakes still tracked.</span></button>
+    <h2>Wheel</h2>
+    <button id="btnRange" data-nav><b>Set wheel to 900°</b><span class="small" id="rangeStatus">Resets when the wheel is unplugged. Applied automatically if already allowed.</span></button>
+    <h2>Wheel controls <span class="small">(keyboard in brackets)</span></h2>
+    <table class="keys">
+      <tr><td>Menus</td><td>D-pad ▲▼ choose · ✕ select</td></tr>
+      <tr><td>Engine start / stop</td><td>✕ (Enter); stop only when stationary</td></tr>
+      <tr><td>Gear up / down</td><td>Right / left paddle (X / Z)</td></tr>
+      <tr><td>Indicators</td><td>L2 / R2 or D-pad ◀ ▶ (Q / E)</td></tr>
+      <tr><td>Camera · reset · guides</td><td>□ · ○ · △ (C · T · G)</td></tr>
+      <tr><td>End level</td><td>OPTIONS (Esc)</td></tr>
+      <tr><td>Pedals / steer</td><td>(W gas · S brake · Shift clutch · A/D)</td></tr>
+    </table>
+  </div>
+</div>
+
+<div id="brief" class="overlay hidden">
+  <div class="card">
+    <div class="small" id="briefNum"></div>
+    <h1 id="briefTitle"></h1>
+    <div id="briefSkill" class="small"></div>
+    <h2>Before you start</h2><ul id="briefTips"></ul>
+    <div id="briefMineWrap"><h2>Your focus from last time</h2><ul id="briefMine"></ul></div>
+    <h2>Goal</h2><div id="briefGoal"></div>
+    <div style="margin-top:14px"><button id="briefGo" data-nav><b>Start ✕</b></button><button id="briefBack" data-nav><b>Back</b></button></div>
+  </div>
+</div>
+
+<div id="summary" class="overlay hidden">
+  <div class="card">
+    <h1 id="sumTitle">Level complete</h1>
+    <div id="sumStars" class="stars" style="font-size:28px"></div>
+    <div id="sumBody"></div>
+    <div style="margin-top:14px"><button id="sumNext" data-nav><b>Next level</b></button><button id="sumRetry" data-nav><b>Try again</b></button><button id="sumMenu" data-nav><b>Menu</b></button></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const mean = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0;
+const rms = a => Math.sqrt(mean(a.map(x => x * x)));
+const std = a => { const m = mean(a); return Math.sqrt(mean(a.map(x => (x - m) ** 2))); };
+const DEG = Math.PI / 180, RPM = 60 / (2 * Math.PI);
+const now = () => performance.now() / 1000;
+
+// ═════════════════════ calibration (from input-test session) ═════════════════════
+let CAL = {
+  steering: { axis: 0, lockDegrees: 900 },
+  pedals: { clutch: { axis: 1, rest: 1, full: -1 }, throttle: { axis: 2, rest: 1, full: -1 }, brake: { axis: 5, rest: 1, full: -1 } },
+  buttons: { paddleRight: 4, paddleLeft: 5 }, dpad: { axis: 9 },
+};
+fetch('calibration.json').then(r => r.ok ? r.json() : null).then(j => { if (j) CAL = j; }).catch(() => {});
+const BTN_DEFAULTS = { cross: 0, square: 1, circle: 2, triangle: 3, r2: 6, l2: 7, share: 8, options: 9 };
+const btn = name => CAL.buttons[name] ?? BTN_DEFAULTS[name];
+const HAT = { U: -1, R: -0.428, D: 0.143, L: 0.714 };   // Chrome hat-axis encoding; neutral 1.286
+
+// ═════════════════════ scene ═════════════════════
+const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: true, logarithmicDepthBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xa9cdee);
+scene.fog = new THREE.Fog(0xa9cdee, 180, 750);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 2000);
+scene.add(new THREE.HemisphereLight(0xe8f2ff, 0x4a5a3a, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(150, 300, 80); scene.add(sun);
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+const matCache = {};
+const mat = c => matCache[c] || (matCache[c] = new THREE.MeshLambertMaterial({ color: c }));
+function flat(w, d, color, x, y, z, parent = scene) {
+  const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, mat(color)); m.position.set(x, y, z); parent.add(m); return m;
+}
+function box(w, h, d, color, x, y, z, parent = scene) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color)); m.position.set(x, y + h / 2, z); parent.add(m); return m;
+}
+function textTex(draw, size = 128) {
+  const c = document.createElement('canvas'); c.width = c.height = size; draw(c.getContext('2d'), size);
+  return new THREE.CanvasTexture(c);
+}
+
+// ═════════════════════ town grid ═════════════════════
+const S = 100, NG = 5, LEN = S * (NG - 1), HW = 3.75, SW = 2.5, E = HW + SW, STOPD = HW + 1.5, LIMIT = 40;
+const ROAD = 0x3d3e42;
+const DIRS = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+const leftOf = d => [d[1], -d[0]];
+const same = (a, b) => a[0] === b[0] && a[1] === b[1];
+
+flat(4000, 4000, 0x5b8a45, LEN / 2, 0, LEN / 2);
+flat(LEN + 2 * E, LEN + 2 * E, 0xa6a6a2, LEN / 2, 0.02, LEN / 2);
+for (let k = 0; k < NG; k++) {
+  flat(2 * HW, LEN + 2 * HW, ROAD, k * S, 0.04, LEN / 2);
+  flat(LEN + 2 * HW, 2 * HW, ROAD, LEN / 2, 0.041, k * S);
+}
+const OL = LEN + 2 * E + 2;
+box(OL, 0.9, 1, 0x3f6e36, LEN / 2, 0, -E - 0.5); box(OL, 0.9, 1, 0x3f6e36, LEN / 2, 0, LEN + E + 0.5);
+box(1, 0.9, OL, 0x3f6e36, -E - 0.5, 0, LEN / 2); box(1, 0.9, OL, 0x3f6e36, LEN + E + 0.5, 0, LEN / 2);
+
+const PALETTE = [0xd9c9a8, 0xc7d3dd, 0xe2b8a0, 0xb9c4a6, 0xd6d0c4, 0xa8b8c8, 0xe6dccb];
+const treeGeo = new THREE.ConeGeometry(2.2, 7, 7); treeGeo.translate(0, 3.5, 0);
+const treeSpots = [];
+for (let bi = 0; bi < NG - 1; bi++) for (let bj = 0; bj < NG - 1; bj++) {
+  const x0 = bi * S + E, x1 = (bi + 1) * S - E, z0 = bj * S + E, w = x1 - x0;
+  const cx = x0 + w / 2, cz = z0 + w / 2;
+  box(w, 0.9, w, 0x3f6e36, cx, 0, cz);
+  flat(w - 1.2, w - 1.2, 0x79a65c, cx, 0.905, cz);
+  for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) {
+    const lx = x0 + w * (a + 0.5) / 2, lz = z0 + w * (b + 0.5) / 2, lot = w / 2;
+    if (Math.random() < 0.75) {
+      const bw = lot * (0.5 + Math.random() * 0.3), bd = lot * (0.5 + Math.random() * 0.3), h = 6 + Math.random() * 22;
+      box(bw, h, bd, PALETTE[(Math.random() * PALETTE.length) | 0], lx, 0.9, lz);
+    } else for (let t = 0; t < 4; t++) treeSpots.push([lx + (Math.random() - 0.5) * lot * 0.6, 0.9, lz + (Math.random() - 0.5) * lot * 0.6]);
+  }
+}
+while (treeSpots.length < 450) {
+  const x = -250 + Math.random() * (LEN + 500), z = -250 + Math.random() * (LEN + 500);
+  if (x > -E - 8 && x < LEN + E + 8 && z > -E - 8 && z < LEN + E + 8) continue;
+  treeSpots.push([x, 0, z]);
+}
+{
+  const trees = new THREE.InstancedMesh(treeGeo, mat(0x2f5a2a), treeSpots.length), d = new THREE.Object3D();
+  treeSpots.forEach(([x, y, z], n) => { const s = 0.7 + Math.random() * 0.7; d.position.set(x, y, z); d.scale.set(s, s, s); d.updateMatrix(); trees.setMatrixAt(n, d.matrix); });
+  scene.add(trees);
+}
+
+const XS = [];
+const xAt = (i, j) => XS[i * NG + j];
+for (let i = 0; i < NG; i++) for (let j = 0; j < NG; j++) {
+  const has = d => { const ni = i + d[0], nj = j + d[1]; return ni >= 0 && ni < NG && nj >= 0 && nj < NG; };
+  const interior = i > 0 && i < NG - 1 && j > 0 && j < NG - 1;
+  const edges = (i === 0 || i === NG - 1) + (j === 0 || j === NG - 1);
+  const type = interior ? 'lights' : edges === 2 ? 'corner' : 'tee';
+  const X = { i, j, cx: i * S, cz: j * S, type, off: Math.random() * 30, exits: DIRS.filter(has), ap: {} };
+  for (const d of DIRS) if (has([-d[0], -d[1]])) {
+    X.ap[d.join()] = { d, control: type === 'lights' ? 'lights' : (type === 'tee' && !has(d)) ? 'stop' : 'none', lamps: null, state: '' };
+  }
+  XS[i * NG + j] = X;
+}
+function lightState(X, d, t) {
+  const ph = (t + X.off) % 30;
+  if (d[1] !== 0) return ph < 11 ? 'G' : ph < 14 ? 'A' : 'R';
+  return ph >= 15.5 && ph < 26.5 ? 'G' : ph >= 26.5 && ph < 29.5 ? 'A' : 'R';
+}
+
+const marks = [];
+for (let k = 0; k < NG; k++) for (let s = 0; s < NG - 1; s++) {
+  const a = s * S + HW, b = (s + 1) * S - HW;
+  for (let t = a + 2; t + 3 <= b - 2; t += 6) { marks.push([k * S, t + 1.5, 0.15, 3]); marks.push([t + 1.5, k * S, 3, 0.15]); }
+  for (const o of [-(HW - 0.3), HW - 0.3]) { marks.push([k * S + o, (a + b) / 2, 0.12, b - a]); marks.push([(a + b) / 2, k * S + o, b - a, 0.12]); }
+}
+const stopTex = textTex((g, n) => { g.fillStyle = '#c8102e'; g.fillRect(0, 0, n, n); g.fillStyle = '#fff'; g.font = `bold ${n * 0.3}px Helvetica, Arial`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('STOP', n / 2, n / 2 + 2); });
+const limitTex = textTex((g, n) => { g.fillStyle = '#fff'; g.fillRect(0, 0, n, n); g.strokeStyle = '#d0021b'; g.lineWidth = n * 0.12; g.beginPath(); g.arc(n / 2, n / 2, n * 0.42, 0, 7); g.stroke(); g.fillStyle = '#000'; g.font = `bold ${n * 0.38}px Helvetica, Arial`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(LIMIT), n / 2, n / 2 + 3); });
+const poleGeo = new THREE.CylinderGeometry(0.06, 0.06, 1, 8); poleGeo.translate(0, 0.5, 0);
+function pole(x, z, h) { const m = new THREE.Mesh(poleGeo, mat(0x555a60)); m.position.set(x, 0, z); m.scale.y = h; scene.add(m); }
+function signFacing(tex, sides, r, x, y, z, d, rot = 0) {
+  const g = new THREE.CircleGeometry(r, sides); g.rotateZ(rot);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex }));
+  m.position.set(x, y, z); m.rotation.y = Math.atan2(-d[0], -d[1]); scene.add(m);
+  const back = new THREE.Mesh(g, mat(0x777777)); back.position.set(x + d[0] * 0.01, y, z + d[1] * 0.01); back.rotation.y = Math.atan2(d[0], d[1]); scene.add(back);
+}
+const lampGeo = new THREE.SphereGeometry(0.12, 12, 8);
+const LAMP = { R: [0xff2a2a, 0x3a0d0d], A: [0xffb000, 0x3a2a05], G: [0x22e060, 0x0b3015] };
+for (const X of XS) for (const a of Object.values(X.ap)) {
+  if (a.control === 'none') continue;
+  const [dx, dz] = a.d, l = leftOf(a.d);
+  const sx = X.cx - dx * STOPD + l[0] * HW / 2, sz = X.cz - dz * STOPD + l[1] * HW / 2;
+  marks.push(dx === 0 ? [sx, sz, HW, 0.45] : [sx, sz, 0.45, HW]);
+  const px = X.cx - dx * (STOPD + 0.6) + l[0] * (HW + 1.1), pz = X.cz - dz * (STOPD + 0.6) + l[1] * (HW + 1.1);
+  if (a.control === 'stop') { pole(px, pz, 2.2); signFacing(stopTex, 8, 0.42, px - dx * 0.08, 2.2, pz - dz * 0.08, a.d, Math.PI / 8); }
+  else {
+    pole(px, pz, 2.9); box(0.36, 1.0, 0.3, 0x15171a, px, 2.9, pz);
+    a.lamps = {};
+    [['R', 3.65], ['A', 3.4], ['G', 3.15]].forEach(([k, y]) => {
+      const m = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({ color: LAMP[k][1] }));
+      m.position.set(px - dx * 0.16, y, pz - dz * 0.16); scene.add(m); a.lamps[k] = m;
+    });
+  }
+}
+for (const X of XS) for (const e of X.exits) if (Math.random() < 0.35) {
+  const l = leftOf(e), x = X.cx + e[0] * (HW + 8) + l[0] * (HW + 1.1), z = X.cz + e[1] * (HW + 8) + l[1] * (HW + 1.1);
+  pole(x, z, 2.2); signFacing(limitTex, 32, 0.38, x - e[0] * 0.08, 2.2, z - e[1] * 0.08, e);
+}
+{
+  const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
+  const im = new THREE.InstancedMesh(g, mat(0xf2f2f2), marks.length), d = new THREE.Object3D();
+  marks.forEach(([x, z, w, dd], n) => { d.position.set(x, 0.06, z); d.scale.set(w, 1, dd); d.updateMatrix(); im.setMatrixAt(n, d.matrix); });
+  scene.add(im);
+}
+
+function where(x, z) {
+  const i = clamp(Math.round(x / S), 0, NG - 1), j = clamp(Math.round(z / S), 0, NG - 1);
+  const dx = x - i * S, dz = z - j * S;
+  const onV = Math.abs(dx) < HW && z > -HW && z < LEN + HW, onH = Math.abs(dz) < HW && x > -HW && x < LEN + HW;
+  const swV = Math.abs(dx) < E && z > -E && z < LEN + E, swH = Math.abs(dz) < E && x > -E && x < LEN + E;
+  return { i, j, dx, dz, onV, onH, box: onV && onH, type: (onV || onH) ? 0 : (swV || swH) ? 1 : 2 };
+}
+
+// level-specific props (stop boards, cones)
+const levelObjs = new THREE.Group(); scene.add(levelObjs);
+const coneGeo = new THREE.ConeGeometry(0.22, 0.7, 12); coneGeo.translate(0, 0.35, 0);
+function clearLevelObjs() { while (levelObjs.children.length) levelObjs.remove(levelObjs.children[0]); }
+// pose in the LEFT lane of road k (axis 'v' = along z, 'h' = along x), travelling d (+1/−1), at road position pos
+const lanePose = (axis, k, d, pos) => axis === 'v' ? [k * S + d * HW / 2, pos, d > 0 ? 0 : Math.PI] : [pos, k * S - d * HW / 2, d > 0 ? Math.PI / 2 : -Math.PI / 2];
+function laneLine(axis, k, d, pos, color) {
+  if (axis === 'v') { flat(HW, 0.5, color, k * S + d * HW / 2, 0.075, pos, levelObjs); const c = new THREE.Mesh(coneGeo, mat(0xff7a1a)); c.position.set(k * S + d * (HW + 0.6), 0.02, pos); levelObjs.add(c); }
+  else { flat(0.5, HW, color, pos, 0.075, k * S - d * HW / 2, levelObjs); const c = new THREE.Mesh(coneGeo, mat(0xff7a1a)); c.position.set(pos, 0.02, k * S - d * (HW + 0.6)); levelObjs.add(c); }
+}
+// countdown board on the kerb side: "20" / "10" / "5" metres to the line
+const boardTex = {};
+function countBoard(axis, k, d, pos, n) {
+  const tex = boardTex[n] || (boardTex[n] = textTex((g, s) => { g.fillStyle = '#ffd400'; g.fillRect(0, 0, s, s); g.fillStyle = '#111'; g.font = `bold ${s * 0.5}px Helvetica, Arial`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(n), s / 2, s / 2 + 3); }));
+  const x = axis === 'v' ? k * S + d * (HW + 0.9) : pos, z = axis === 'v' ? pos : k * S - d * (HW + 0.9);
+  const p = new THREE.Mesh(poleGeo, mat(0x555a60)); p.position.set(x, 0, z); p.scale.y = 1.0; levelObjs.add(p);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), new THREE.MeshBasicMaterial({ map: tex }));
+  m.position.set(x, 1.2, z); m.rotation.y = axis === 'v' ? (d > 0 ? Math.PI : 0) : (d > 0 ? -Math.PI / 2 : Math.PI / 2); levelObjs.add(m);
+}
+// distance from front bumper to a road position, along travel
+const bumperTo = (axis, d, pos) => (pos - (axis === 'v' ? car.z : car.x)) * d - 2.05;
+
+// ═════════════════════ car ═════════════════════
+const carG = new THREE.Group();
+// driver's eye (right-hand drive: local −x) and bonnet front edge → where the road disappears from view
+const EYE = { x: -0.38, y: 1.2, z: -0.15 }, BONNET = { y: 0.8, z: 2.05 };
+const HIDDEN = +(EYE.z + (BONNET.z - EYE.z) * EYE.y / (EYE.y - BONNET.y) - 2.05).toFixed(1);  // m ahead of the bumper you can't see
+box(1.75, 0.5, 4.1, 0xf4f4f2, 0, 0.3, 0, carG);                 // body; bonnet top at 0.8 m
+box(1.5, 0.5, 2.0, 0x26303b, 0, 0.8, -0.25, carG);              // cabin
+const lplate = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.28), new THREE.MeshBasicMaterial({ map: textTex((g, n) => { g.fillStyle = '#fff'; g.fillRect(0, 0, n, n); g.fillStyle = '#d0021b'; g.font = `bold ${n * 0.8}px Helvetica`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('L', n / 2, n / 2 + 4); }) }));
+lplate.position.set(0, 0.6, -2.06); lplate.rotation.y = Math.PI; carG.add(lplate);
+const wGeo = new THREE.CylinderGeometry(0.31, 0.31, 0.22, 16); wGeo.rotateZ(Math.PI / 2);
+const wheels = [[0.82, 1.25], [-0.82, 1.25], [0.82, -1.35], [-0.82, -1.35]].map(([x, z]) => {
+  const p = new THREE.Group(); p.position.set(x, 0.31, z); const w = new THREE.Mesh(wGeo, mat(0x111111)); p.add(w); carG.add(p); return { p, w };
+});
+const guideMat = new THREE.MeshBasicMaterial({ color: 0x37d0ff, transparent: true, opacity: 0.55, depthWrite: false });
+const guides = new THREE.Group();
+for (const x of [0.875, -0.875]) {
+  const g = new THREE.PlaneGeometry(0.07, 15); g.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, guideMat); m.position.set(x, 0.08, 10.5); guides.add(m);
+  for (let z = 5; z <= 18; z += 5) { const tg = new THREE.PlaneGeometry(0.3, 0.07); tg.rotateX(-Math.PI / 2); const t = new THREE.Mesh(tg, guideMat); t.position.set(x - Math.sign(x) * 0.15, 0.08, z); guides.add(t); }
+}
+carG.add(guides);
+try { guides.visible = localStorage.getItem('ds-guides') !== '0'; } catch {}
+function toggleGuides() { guides.visible = !guides.visible; try { localStorage.setItem('ds-guides', guides.visible ? '1' : '0'); } catch {} say('Width guides ' + (guides.visible ? 'on' : 'off'), 'var(--acc)', 2); }
+scene.add(carG);
+
+// ═════════════════════ physics ═════════════════════
+// Body frame (ISO): x fwd, y left, yaw+ = left. World: fwd = (sin h, cos h), left = (cos h, -sin h).
+const M = 1200, IZ = 1600, A = 1.2, B = 1.4, WB = A + B, G = 9.81, CF = 80000, CR = 90000, MU = 1.0;
+const RW = 0.31, FINAL = 4.1, GEARS = { '-1': -3.3, 0: 0, 1: 3.5, 2: 2.05, 3: 1.38, 4: 1.03, 5: 0.82 };
+const IE = 0.18, IDLE = 820, STALL = 380, REDLINE = 6300;
+const car = {};
+function resetCar(x, z, h) {
+  Object.assign(car, { x, z, h, vx: 0, vy: 0, r: 0, delta: 0, we: 0, running: false, gear: 0, ag: 1, shiftT: 0, ind: null, ax: 0 });
+}
+resetCar(...lanePose('v', 0, 1, 20));
+let manual = false;
+try { manual = localStorage.getItem('ds-manual') === '1'; } catch {}
+
+const torqueCurve = rpm => 150 * clamp(1 - ((rpm - 3800) / 4600) ** 2, 0.45, 1);
+const ratio = () => manual ? GEARS[car.gear] * FINAL : car.gear === 0 ? 0 : car.gear === -1 ? GEARS[-1] * FINAL : GEARS[car.ag] * FINAL;
+
+function step(dt, inp) {
+  const rpm = car.we * RPM, v = car.vx;
+  const thr = rpm > REDLINE ? 0 : inp.thr;
+  let Te;
+  if (car.running) {
+    Te = thr * torqueCurve(rpm) - (8 + 0.004 * rpm);
+    if (rpm < 850) Te += clamp((850 - rpm) * 0.4, 0, 45);
+  } else Te = -(8 + 0.004 * rpm) * (car.we > 0 ? 1 : 0) - 0.4 * car.we;
+
+  const gr = ratio();
+  let Tc = 0;
+  if (gr !== 0) {
+    const wg = (v / RW) * gr;
+    if (manual) {
+      const cap = 280 * smooth(0.25, 0.8, 1 - inp.clu);
+      Tc = clamp(30 * (car.we - wg), -cap, cap);
+    } else {
+      const sr = wg / Math.max(car.we, 1);
+      Tc = clamp(0.0035 * car.we * car.we * (1 - sr), -250, 300);
+    }
+  }
+  car.we = Math.max(0, car.we + (Te - Tc) / IE * dt);
+  const Fdrive = Tc * gr * 0.9 / RW;
+
+  const here = where(car.x, car.z);
+  let Fx = Fdrive - 0.42 * v * Math.abs(v) - (here.type === 1 ? 700 : 130) * Math.tanh(v * 3);
+  const Fb = inp.brk * 9500;
+  if (Math.abs(v) < 0.15) { if (Fb >= Math.abs(Fx)) { Fx = 0; car.vx = 0; } else Fx -= Math.sign(Fx) * Fb; }
+  else Fx -= Math.sign(v) * Fb;
+
+  const d = car.delta, vxs = Math.max(Math.abs(car.vx), 1);
+  const af = Math.atan2(car.vy + A * car.r, vxs) - d, ar = Math.atan2(car.vy - B * car.r, vxs);
+  const fmf = MU * M * G * B / WB, fmr = MU * M * G * A / WB;
+  const Fyf = -fmf * Math.tanh(CF * af / fmf), Fyr = -fmr * Math.tanh(CR * ar / fmr);
+
+  const ax = Fx / M + car.vy * car.r;
+  car.vx += ax * dt;
+  car.vy += ((Fyf * Math.cos(d) + Fyr) / M - car.vx * car.r) * dt;
+  car.r += ((A * Fyf * Math.cos(d) - B * Fyr) / IZ) * dt;
+  const w = car.vx > 0 ? clamp((car.vx - 1) / 4, 0, 1) : 0;
+  car.r = w * car.r + (1 - w) * (car.vx * Math.tan(d) / WB);
+  car.vy *= w;
+  car.ax = ax;
+
+  const px = car.x, pz = car.z, ph = car.h;
+  car.h += car.r * dt;
+  const s = Math.sin(car.h), c = Math.cos(car.h);
+  car.x += (s * car.vx + c * car.vy) * dt;
+  car.z += (c * car.vx - s * car.vy) * dt;
+  for (const [lx, lz] of [[0.85, 2.05], [-0.85, 2.05], [0.85, -2.05], [-0.85, -2.05]]) {
+    if (where(car.x + c * lx + s * lz, car.z - s * lx + c * lz).type === 2) {
+      car.x = px; car.z = pz; car.h = ph; car.vx *= -0.15; car.vy = 0; car.r = 0;
+      fault('crash', 'serious', 'Collision: you hit the hedge / wall');
+      break;
+    }
+  }
+  if (manual && car.running && car.we * RPM < STALL) { car.running = false; onStall(inp); }
+}
+
+// ═════════════════════ input ═════════════════════
+const keys = {};
+const pedOK = { clutch: false, throttle: false, brake: false };
+let prevBtns = [], prevHat = 'none', kbSteer = 0;
+function pedal(pad, name) {
+  const m = CAL.pedals[name], v = pad.axes[m.axis];
+  if (v === undefined) return 0;
+  if (!pedOK[name]) { if (Math.abs(v - m.rest) < 0.05) pedOK[name] = true; else return 0; }
+  const full = name === 'brake' ? Math.max(m.full, -0.8) : m.full;
+  return clamp((m.rest - v) / (m.rest - full), 0, 1);
+}
+function getPad() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  return pads.find(p => /logitech|g29|wheel|046d/i.test(p.id)) || pads[0] || null;
+}
+let lastInp = { steer: 0, thr: 0, brk: 0, clu: 0 };
+function readInput(dt) {
+  const kL = keys.KeyA || keys.ArrowLeft, kR = keys.KeyD || keys.ArrowRight;
+  kbSteer += (((kR ? 1 : 0) - (kL ? 1 : 0)) - kbSteer) * Math.min(1, dt * 5);
+  const inp = { steer: kbSteer, wheel: false,
+    thr: (keys.KeyW || keys.ArrowUp) ? 1 : 0, brk: (keys.KeyS || keys.ArrowDown) ? 1 : 0, clu: (keys.ShiftLeft || keys.ShiftRight) ? 1 : 0 };
+  const pad = getPad();
+  if (pad) {
+    if (Math.abs(kbSteer) < 0.01) { inp.steer = pad.axes[CAL.steering.axis] || 0; inp.wheel = true; }
+    inp.thr = Math.max(inp.thr, pedal(pad, 'throttle'));
+    inp.brk = Math.max(inp.brk, pedal(pad, 'brake'));
+    inp.clu = Math.max(inp.clu, pedal(pad, 'clutch'));
+    pad.buttons.forEach((b, i) => { if (b.pressed && !prevBtns[i]) onButton(i, inp); prevBtns[i] = b.pressed; });
+    const hv = pad.axes[CAL.dpad.axis];
+    const hat = Object.keys(HAT).find(k => Math.abs(hv - HAT[k]) < 0.1) || 'none';
+    if (hat !== prevHat && hat !== 'none') onHat(hat);
+    prevHat = hat;
+  }
+  lastInp = inp;
+  return inp;
+}
+let active = false;
+function onButton(i, inp) {
+  if (!active) return navButton(i);
+  if (i === CAL.buttons.paddleRight) gearUp(inp);
+  else if (i === CAL.buttons.paddleLeft) gearDown(inp);
+  else if (i === btn('cross')) engineButton(inp);
+  else if (i === btn('square')) camMode ^= 1;
+  else if (i === btn('circle')) placeOnLane();
+  else if (i === btn('triangle')) toggleGuides();
+  else if (i === btn('l2')) toggleInd('L');
+  else if (i === btn('r2')) toggleInd('R');
+  else if (i === btn('options')) endLevel(true);
+}
+function onHat(dir) {
+  if (!active) return navHat(dir);
+  if (dir === 'L' || dir === 'R') toggleInd(dir);
+}
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (!active) {
+    if (e.code === 'ArrowUp') navHat('U'); if (e.code === 'ArrowDown') navHat('D');
+    if (e.code === 'Enter') { e.preventDefault(); navButton(btn('cross')); }
+    if (e.code === 'Escape') navBack();
+    return;
+  }
+  if (e.code === 'Escape') return endLevel(true);
+  if (e.code === 'KeyX') gearUp(lastInp);
+  if (e.code === 'KeyZ') gearDown(lastInp);
+  if (e.code === 'KeyQ') toggleInd('L');
+  if (e.code === 'KeyE') toggleInd('R');
+  if (e.code === 'Enter') engineButton(lastInp);
+  if (e.code === 'KeyC') camMode ^= 1;
+  if (e.code === 'KeyT') placeOnLane();
+  if (e.code === 'KeyG') toggleGuides();
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+
+const GEAR_NAMES = { '-1': 'R', 0: 'N' };
+function gearUp(inp) {
+  if (manual) {
+    if (car.gear >= 5) return;
+    if (inp.clu < 0.7) return say('Press the clutch fully before changing gear', 'var(--acc)', 3);
+    car.gear++;
+  } else {
+    if (car.gear === 1) return;
+    if (car.gear === 0 && inp.brk < 0.2) return say('Hold the brake to select D', 'var(--acc)', 3);
+    if (car.gear === -1 && Math.abs(car.vx) > 1) return say('Stop before changing direction', 'var(--acc)', 3);
+    car.gear++; car.ag = 1;
+  }
+}
+function gearDown(inp) {
+  if (manual) {
+    if (car.gear <= -1) return;
+    if (inp.clu < 0.7) return say('Press the clutch fully before changing gear', 'var(--acc)', 3);
+    if (car.gear === 0 && Math.abs(car.vx) > 0.8) return say('Stop completely before selecting reverse', 'var(--acc)', 3);
+    car.gear--;
+  } else {
+    if (car.gear === -1) return;
+    if (car.gear === 0 && (inp.brk < 0.2 || Math.abs(car.vx) > 0.8)) return say('Stop and hold the brake to select R', 'var(--acc)', 3);
+    if (car.gear === 1 && Math.abs(car.vx) > 1) return say('Stop before selecting N/R', 'var(--acc)', 3);
+    car.gear--;
+  }
+}
+function ignition(inp) {
+  if (car.running) return;
+  if (manual && car.gear !== 0 && inp.clu < 0.7) return say('Clutch down (or select neutral) before starting', 'var(--acc)', 3);
+  if (!manual && car.gear !== 0 && inp.brk < 0.2) return say('Hold the brake (or select N) before starting', 'var(--acc)', 3);
+  car.running = true; car.we = 900 / RPM; say('Engine started', 'var(--acc)', 2);
+}
+function engineButton(inp) {
+  if (!car.running) return ignition(inp);
+  if (Math.abs(car.vx) > 0.5) return say('Stop the car before switching the engine off', 'var(--acc)', 3);
+  car.running = false; say('Engine off', 'var(--acc)', 2);
+}
+function toggleInd(side) {
+  car.ind = car.ind === side ? null : side;
+  if (car.ind) { R.lastInd = car.ind; R.lastIndT = now(); C.indOdo = T.odo; }
+}
+
+// ═════════════════════ telemetry + personal coach ═════════════════════
+// T: rolling input history.  ST: stats for the current attempt.  C: detector state.
+const T = { hist: [], odo: 0 };
+function telTick(dt, inp) {
+  T.odo += Math.abs(car.vx) * dt;
+  T.hist.push({ t: now(), thr: inp.thr, brk: inp.brk, clu: inp.clu, steer: inp.steer });
+  if (T.hist.length > 120) T.hist.shift();
+}
+const ago = s => { const t = now() - s; for (let k = T.hist.length - 1; k >= 0; k--) if (T.hist[k].t <= t) return T.hist[k]; return T.hist[0] || lastInp; };
+let ST, C;
+function resetStats() {
+  ST = { issues: {}, harsh: 0, maxDecel: 0, stabs: 0, stalls: 0, dumps: 0, jerky: 0, crossings: 0, kerb: 0, saw: 0, lane: [], turns: [], stops: [] };
+  C = { stabArm: false, harshT: 0, harshArm: false, prevSp: 0, prevSteer: 0, steerDir: 0, rev: [], dumpArm: false, lastDumpT: -9, slipT: 0, laneWin: [], indOdo: -1e9, kerbArm: false };
+}
+resetStats();
+
+// Which live hints a level shows (everything is still recorded for the debrief).
+const HINT_CAT = {
+  stab: 'pedals', harsh: 'pedals', jerky: 'pedals', dump: 'pedals', slipRev: 'pedals', stallDump: 'pedals', stallStop: 'pedals', stallGas: 'pedals', stall: 'pedals', coast: 'pedals', revs: 'pedals', lug: 'pedals', moved: 'pedals',
+  saw: 'steer', weave: 'steer', hugKerb: 'steer', nearCentre: 'steer',
+  fast: 'speed', slow: 'speed', lowGear: 'speed',
+  fastTurn: 'turns', lateSignal: 'turns', noSignal: 'turns', wide: 'turns', kerbTurn: 'turns', sigNow: 'turns', slowNow: 'turns',
+  stopShort: 'junction', stopOver: 'junction', redAhead: 'junction', amber: 'junction', stopAhead: 'junction',
+};
+const ISSUE_TXT = {
+  stab: 'Squeeze the accelerator gently (over ~1 s)', harsh: 'Brake earlier and more progressively', jerky: 'Ease off the brake just before stopping',
+  dump: 'Release the clutch slowly; pause at the bite point', slipRev: 'Fewer revs while slipping the clutch (~1500–2000 rpm)',
+  stallDump: 'Stalls from lifting the clutch too fast', stallStop: 'Clutch down before the car stops', stallGas: 'A little gas when finding the bite point',
+  coast: 'Don\'t hold the clutch down while driving', lug: 'Change down when the engine labours', revs: 'Change up before the revs get high',
+  saw: 'Smoother steering: look further ahead', weave: 'Hold a steady line in the lane', hugKerb: 'Keep further from the kerb', nearCentre: 'Keep ~1 m from the centre line',
+  fast: 'Hold the target speed (you went over)', slow: 'Hold the target speed (you dropped under)', lowGear: 'Change up earlier',
+  fastTurn: 'Slow to ~15 km/h before turning', lateSignal: 'Signal earlier (~30 m before a turn)', noSignal: 'Always signal before turning',
+  wide: 'Stay in the correct lane through turns', kerbTurn: 'Watch the kerb when turning', stopShort: 'Stop closer to the line', stopOver: 'Stop before the line, not over it',
+  red: 'Never go through a red light', stop: 'Always stop fully at STOP lines', wrong: 'Keep LEFT', straddle: 'Don\'t straddle the centre line', crash: 'Avoid collisions', kerb: 'Don\'t mount the pavement',
+  speed: 'Keep under the limit', speed2: 'Keep under the limit', signal: 'Signal before every turn', moved: 'Keep the brake on while stationary', route: 'Follow directions',
+};
+let cool = {}, subUntil = 0;
+function say(text, color, secs) { $('coachSub').textContent = text; $('coachSub').style.color = color; subUntil = now() + secs; }
+function hint(key, text, cd = 8) {
+  const t = now(); if (cool[key] > t) return; cool[key] = t + cd;
+  if (!key.startsWith('ok')) ST.issues[key] = (ST.issues[key] || 0) + 1;
+  const focus = LV ? LV.def.focus : null;
+  if (key.startsWith('ok') || !focus || focus.includes(HINT_CAT[key])) say('💡 ' + text, key.startsWith('ok') ? 'var(--ok)' : 'var(--acc)', 6);
+}
+let faults = [];
+function fault(key, sev, text, cd = 6) {
+  if (!active) return;
+  const t = now(); if (cool[key] > t) return; cool[key] = t + cd;
+  ST.issues[key] = (ST.issues[key] || 0) + 1;
+  faults.push({ sev, text, t });
+  $('nMinor').textContent = faults.filter(f => f.sev === 'minor').length;
+  $('nSerious').textContent = faults.filter(f => f.sev === 'serious').length;
+  $('faultList').innerHTML = faults.slice(-6).reverse().map(f => `<div class="f ${f.sev}">${f.sev === 'serious' ? '✖' : '•'} ${f.text}</div>`).join('');
+  say(text, sev === 'serious' ? 'var(--bad)' : 'var(--warn)', 4);
+  beep(sev === 'serious' ? 330 : 520);
+}
+function onStall(inp) {
+  ST.stalls++; fault('stallLog', 'minor', 'Stalled', 0);
+  if (now() - C.lastDumpT < 1.5) hint('stallDump', 'Stalled because the clutch came up too fast. Clutch down, ✕ to restart, then pause at the bite point for a second.', 0);
+  else if (Math.abs(car.vx) < 1.5 && inp.brk > 0.2 && inp.clu < 0.5) hint('stallStop', 'Stalled while stopping: press the clutch down before the car stops (below ~10 km/h).', 0);
+  else if (inp.thr < 0.1) hint('stallGas', 'Stalled: add a little gas (~1500 rpm) while you bring the clutch up to the bite point.', 0);
+  else hint('stall', 'Stalled. Clutch down, then ✕ to restart.', 0);
+}
+
+function coachTick(dt, inp) {
+  const sp = Math.abs(car.vx), kmh = sp * 3.6, t = now(), h = ago(0.25);
+  // accelerator stab
+  if (inp.thr - h.thr > 0.55 && kmh < 25 && car.running && car.gear !== 0 && !C.stabArm) {
+    C.stabArm = true; ST.stabs++;
+    hint('stab', `You pressed the accelerator to ${Math.round(inp.thr * 100)}% in a quarter of a second. Squeeze it gently, over about a second.`);
+  }
+  if (inp.thr < 0.2) C.stabArm = false;
+  // harsh braking
+  if (car.ax < -4.5 && sp > 2) {
+    C.harshT += dt; ST.maxDecel = Math.max(ST.maxDecel, -car.ax);
+    if (C.harshT > 0.2 && !C.harshArm) { C.harshArm = true; ST.harsh++; hint('harsh', `Harsh braking (${(-car.ax / G).toFixed(2)} g). Look further ahead, start braking earlier and press the pedal progressively.`); }
+  } else { C.harshT = 0; if (car.ax > -2) C.harshArm = false; }
+  // jolt at the end of a stop
+  if (C.prevSp > 0.3 && sp < 0.05 && inp.brk > 0.6) { ST.jerky++; hint('jerky', 'Jolty stop. Ease off the brake slightly in the last metre so the car settles gently.'); }
+  C.prevSp = sp;
+  // steering sawing
+  const ds = inp.steer - C.prevSteer; C.prevSteer = inp.steer;
+  if (kmh > 12 && Math.abs(ds) > 0.0015) { const dir = Math.sign(ds); if (dir !== C.steerDir) { C.steerDir = dir; C.rev.push(t); } }
+  C.rev = C.rev.filter(x => t - x < 6);
+  if (C.rev.length > 14) { ST.saw++; C.rev = []; hint('saw', 'Lots of small back-and-forth steering. Relax your grip (quarter-to-three), and look further ahead to where you want to go.'); }
+  // manual gearbox habits
+  if (manual) {
+    const c = ago(0.3);
+    if (c.clu > 0.6 && inp.clu < 0.2 && kmh < 8 && car.gear !== 0 && car.running && !C.dumpArm) {
+      C.dumpArm = true; ST.dumps++; C.lastDumpT = t;
+      hint('dump', 'You let the clutch up in under a third of a second. Lift to the bite point, hold it about a second while the car starts to roll, then lift the rest.');
+    }
+    if (inp.clu > 0.6) C.dumpArm = false;
+    if (inp.clu > 0.3 && inp.clu < 0.75 && car.we * RPM > 3500 && car.gear !== 0) { C.slipT += dt; if (C.slipT > 1) { C.slipT = 0; hint('slipRev', `${Math.round(car.we * RPM)} rpm while slipping the clutch is too many. About 1500–2000 rpm is plenty to move off.`); } } else C.slipT = 0;
+    if (car.running && car.gear > 0 && inp.clu < 0.3 && car.we * RPM > 5000) hint('revs', `High revs (${Math.round(car.we * RPM)} rpm): change up a gear.`);
+  }
+}
+
+// lane telemetry: called from rules() whenever the car is on a straight and aligned
+function laneTel(dt, off, toCentre, toKerb, sp) {
+  if (sp < 3) return;
+  const dev = off - HW / 2;                         // + = toward the kerb, − = toward the centre line
+  ST.lane.push(dev);
+  const t = now();
+  C.laneWin.push([t, dev]); C.laneWin = C.laneWin.filter(([x]) => t - x < 4);
+  if (toKerb < 0.1 && !C.kerbArm) { C.kerbArm = true; ST.kerb++; }
+  if (toKerb > 0.3) C.kerbArm = false;
+  if (C.laneWin.length > 120) {
+    const m = mean(C.laneWin.map(x => x[1])), s = std(C.laneWin.map(x => x[1]));
+    if (m > 0.55) hint('hugKerb', `You're hugging the kerb (${Math.max(0, toKerb).toFixed(1)} m gap). Move right a little: in this car the centre line should look like it runs toward the right side of the bonnet.`, 12);
+    else if (m < -0.5) hint('nearCentre', `You're close to the centre line (${Math.max(0, toCentre).toFixed(1)} m). Ease left: keep about a door-width (1 m) from it.`, 12);
+    else if (s > 0.35) hint('weave', `Your position is wandering ±${s.toFixed(1)} m. Look far ahead, where you'll be in 3–4 seconds, and make small, early corrections.`, 12);
+  }
+}
+
+// ═════════════════════ road rules (instructor) ═════════════════════
+const R = { wrongT: 0, strT: 0, spdT: 0, coastT: 0, lugT: 0, inBox: null, entry: null, apMin: Infinity, apKey: '', lastInd: null, lastIndT: -1e9, ahead: null, lane: null, ldw: false, post: null, stopKey: '' };
+const fwd = () => [Math.sin(car.h), Math.cos(car.h)];
+const cardinal = f => Math.abs(f[0]) > Math.abs(f[1]) ? [Math.sign(f[0]), 0] : [0, Math.sign(f[1])];
+const TURN_NAME = { L: 'left', R: 'right', S: 'straight', U: 'U' };
+
+function rules(dt) {
+  const sp = Math.abs(car.vx), kmh = sp * 3.6, w = where(car.x, car.z), f = fwd(), t = now();
+  const rpm = car.we * RPM, inp = lastInp, on = LV ? LV.def.rules : { lane: 1, speed: 1, junction: 1 };
+
+  if (w.type === 1 && sp > 0.5) fault('kerb', 'minor', 'Mounted the pavement: stay on the road');
+
+  if (on.speed) {
+    R.spdT = kmh > LIMIT + 5 ? R.spdT + dt : 0;
+    if (kmh > LIMIT + 20) fault('speed2', 'serious', `Far over the ${LIMIT} km/h limit`);
+    else if (R.spdT > 2.5) fault('speed', 'minor', `Over the ${LIMIT} km/h limit`);
+  }
+
+  R.ahead = null; R.lane = null;
+  if (!w.box && (w.onV || w.onH)) {
+    const vert = w.onV, axisF = vert ? f[1] : f[0];
+    if (Math.abs(axisF) > 0.6) {
+      const dsign = Math.sign(axisF);
+      const off = vert ? w.dx * dsign : -w.dz * dsign;
+      const toCentre = off - 0.875, toKerb = HW - (off + 0.875);
+      R.lane = { off, toCentre, toKerb };
+      laneTel(dt, off, toCentre, toKerb, sp);
+      if (sp > 3 && toCentre < 0 && car.ind !== 'R' && !R.ldw) { R.ldw = true; ST.crossings++; beep(240, 0.3); say('⚠ Crossing the centre line: steer back LEFT', 'var(--warn)', 2.5); }
+      if (toCentre > 0.2) R.ldw = false;
+      if (on.lane && sp > 2) {
+        R.wrongT = off < -0.6 ? R.wrongT + dt : 0;
+        R.strT = off >= -0.6 && off < 0.5 ? R.strT + dt : 0;
+        if (R.wrongT > 1) fault('wrong', 'serious', 'Wrong side of the road: keep LEFT');
+        else if (R.strT > 2) fault('straddle', 'minor', 'Straddling the centre line');
+      }
+      if (R.post && R.lane) R.post.minOff = Math.min(R.post.minOff, off);
+
+      const pos = vert ? car.z : car.x;
+      const k = dsign > 0 ? Math.ceil(pos / S) : Math.floor(pos / S);
+      if (k >= 0 && k < NG) {
+        const X = vert ? xAt(w.i, k) : xAt(k, w.j), d = vert ? [0, dsign] : [dsign, 0];
+        const dist = (k * S - pos) * dsign - STOPD;
+        const ap = X.ap[d.join()];
+        if (ap) {
+          R.ahead = { X, d, dist, ap };
+          const key = X.i + ',' + X.j + ':' + d.join();
+          if (R.apKey !== key) { R.apKey = key; R.apMin = Infinity; }
+          if (dist < 15) R.apMin = Math.min(R.apMin, sp);
+          if (ap.control !== 'none') {
+            if (ap.control === 'stop' && dist < 45 && dist > 0) hint('stopAhead', `STOP sign ahead (${Math.round(dist)} m): you must stop completely at the white line.`, 15);
+            if (ap.control === 'lights' && dist < 45 && dist > 2) {
+              const ls = lightState(X, d, t);
+              if (ls === 'R' && sp > 4) hint('redAhead', `Red light ahead (${Math.round(dist)} m): ease off now and plan to stop at the white line.`, 10);
+              if (ls === 'A' && dist > 12 && sp > 4) hint('amber', 'Amber: stop at the line if you safely can.', 6);
+            }
+            // record where you stopped relative to the line
+            if (sp < 0.05 && dist < 20 && R.stopKey !== key) {
+              R.stopKey = key;
+              const gap = dist - 2.05;
+              ST.stops.push({ control: ap.control, gap });
+              if (gap > 3) hint('stopShort', `You stopped ${gap.toFixed(1)} m short of the line. Creep up so your front bumper is just behind it.`, 0);
+              else if (gap < -0.3) hint('stopOver', `You stopped ${(-gap).toFixed(1)} m over the line. Stop with the bumper just behind it.`, 0);
+              else hint('okStop', `Good stop position (${gap.toFixed(1)} m from the line) ✓`, 0);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // junction entry / exit
+  if (w.box && !R.inBox) {
+    const X = xAt(w.i, w.j), d = cardinal(f), ap = X.ap[d.join()];
+    R.inBox = X;
+    R.entry = { d, sig: car.ind || (t - R.lastIndT < 3 ? R.lastInd : null), kmh, odo: T.odo, kerb0: ST.kerb };
+    if (on.junction && ap && ap.control === 'lights' && lightState(X, d, t) === 'R' && car.vx > 0) fault('red', 'serious', 'Went through a RED light');
+    if (on.junction && ap && ap.control === 'stop' && car.vx > 0 && R.apMin > 0.6) fault('stop', 'serious', 'Did not stop at the STOP line');
+  } else if (!w.box && R.inBox && R.entry) {
+    const X = R.inBox, dx = car.x - X.cx, dz = car.z - X.cz;
+    const ex = Math.abs(dx) > Math.abs(dz) ? [Math.sign(dx), 0] : [0, Math.sign(dz)];
+    const en = R.entry.d, l = leftOf(en);
+    const turn = same(ex, en) ? 'S' : same(ex, l) ? 'L' : same(ex, [-l[0], -l[1]]) ? 'R' : 'U';
+    if (turn === 'L' || turn === 'R') {
+      const signalled = R.entry.sig === turn;
+      if (on.junction && !signalled) fault('signal', 'minor', `Signal ${turn === 'L' ? 'LEFT' : 'RIGHT'} before turning`);
+      R.post = { turn, odo: T.odo, kmh: R.entry.kmh, lead: signalled ? Math.max(0, R.entry.odo - C.indOdo) : -1, kerb0: R.entry.kerb0, minOff: 9 };
+    }
+    if (turn !== 'U' && car.ind === turn) car.ind = null;
+    onJunctionDone(X, turn);
+    R.inBox = null; R.entry = null;
+  } else if (!w.box) R.inBox = null;
+
+  // evaluate a turn 10 m after leaving the junction
+  if (R.post && T.odo - R.post.odo > 10) {
+    const p = R.post; R.post = null;
+    const name = TURN_NAME[p.turn], wide = p.minOff < 0, kerb = ST.kerb > p.kerb0;
+    const rec = { turn: p.turn, kmh: p.kmh, lead: p.lead, wide, kerb };
+    rec.good = p.kmh <= 22 && p.lead >= 15 && !wide && !kerb;
+    ST.turns.push(rec);
+    if (p.kmh > 22) hint('fastTurn', `You took that ${name} turn at ${Math.round(p.kmh)} km/h. Slow to about 15 km/h before you start steering.`, 0);
+    else if (p.lead < 0) hint('noSignal', `No signal for that ${name} turn. Mirror → signal → slow down, about 30 m before.`, 0);
+    else if (p.lead < 15) hint('lateSignal', `You signalled only ${Math.round(p.lead)} m before the turn. Aim for about 30 m so others know early.`, 0);
+    else if (wide) hint('wide', p.turn === 'L' ? 'You swung wide into the other lane. For a left turn stay close to the left and steer when the kerb corner is level with you.' : 'After the right turn you ended up on the wrong side. Aim for the LEFT lane of the new road; don\'t cut across.', 0);
+    else if (kerb) hint('kerbTurn', p.turn === 'L' ? 'You clipped the kerb. In a right-hand-drive car the left kerb is far from you: turn a little later and use the left mirror.' : 'You clipped the kerb: you cut the corner. Go a little further before turning.', 0);
+    else hint('okTurn', `Nice ${name} turn ✓ (${Math.round(p.kmh)} km/h, signalled ${Math.round(p.lead)} m before)`, 0);
+  }
+
+  if (manual) {
+    R.coastT = inp.clu > 0.7 && kmh > 15 ? R.coastT + dt : 0;
+    if (R.coastT > 4) { R.coastT = 0; hint('coast', 'Coasting: you\'ve held the clutch down for 4 s. Only press it to change gear or stop.'); }
+    R.lugT = car.running && car.gear >= 2 && inp.clu < 0.3 && rpm < 1100 && sp > 1 ? R.lugT + dt : 0;
+    if (R.lugT > 1) hint('lug', `Engine labouring at ${Math.round(rpm)} rpm: change down a gear.`);
+  }
+}
+
+// ═════════════════════ levels ═════════════════════
+// Each level teaches ONE skill. focus = live hint categories; rules = which road-rule faults apply.
+const LEVELS = [
+  {
+    id: 'controls', title: 'Controls & starting up', skill: 'Find the pedals, start the engine, select a gear. The car stays still.',
+    pose: ['v', 0, 1, 20], engine: false, focus: ['pedals'], rules: {},
+    tips: m => [
+      m ? 'Left foot: clutch only. Right foot: brake AND accelerator.' : 'Use only your RIGHT foot, for both the brake and the accelerator. Rest the left foot.',
+      'Hold the wheel at quarter-to-three, with your arms slightly bent.',
+      'Before starting the engine, make sure you\'re in neutral (N) and keep the brake pressed.',
+      'Paddles change gear: right = up, left = down.'],
+    goal: 'Follow each step on the left. Nothing moves in this level.',
+    steps: m => m ? [
+      ['Press the CLUTCH (left pedal) all the way down, then release it', L => L.max.c > 0.9 && lastInp.clu < 0.1],
+      ['Press the BRAKE (middle pedal) firmly, then release it', L => L.max.b > 0.85 && lastInp.brk < 0.1],
+      ['Press the ACCELERATOR (right pedal) halfway, then release it', L => L.max.a > 0.4 && lastInp.thr < 0.1],
+      ['Now hold the brake, press the clutch down and press ✕ to start the engine', () => car.running],
+      ['Keep the clutch down and the brake on. Right paddle: 1st gear', () => car.gear === 1],
+      ['Left paddle: back to neutral (N). Then lift the clutch', () => car.gear === 0 && lastInp.clu < 0.2],
+      ['Press ✕ to switch the engine off', () => !car.running],
+    ] : [
+      ['Press the BRAKE (middle pedal) firmly, then release it', L => L.max.b > 0.85 && lastInp.brk < 0.1],
+      ['Press the ACCELERATOR (right pedal) halfway, then release it', L => L.max.a > 0.4 && lastInp.thr < 0.1],
+      ['Hold the brake and press ✕ to start the engine', () => car.running],
+      ['Keep holding the brake. Right paddle: D (drive)', () => car.gear === 1],
+      ['Still on the brake: left paddle back to N', () => car.gear === 0],
+      ['Press ✕ to switch the engine off', () => !car.running],
+    ],
+    start(L) { L.max = { a: 0, b: 0, c: 0 }; L.odo0 = T.odo; },
+    tick(L) {
+      L.max.a = Math.max(L.max.a, lastInp.thr); L.max.b = Math.max(L.max.b, lastInp.brk); L.max.c = Math.max(L.max.c, lastInp.clu);
+      if (T.odo - L.odo0 > 1) { L.moved = true; hint('moved', 'The car moved. Keep the brake pressed while the engine is running and a gear is selected.'); }
+      if (car.running && car.gear !== 0 && lastInp.brk < 0.2) hint('okHold', 'Keep your foot on the brake while in gear.', 6);
+    },
+    grade(L) {
+      const s = 3 - (L.moved ? 1 : 0) - (ST.stalls ? 1 : 0);
+      return { stars: Math.max(1, s), metrics: [['Time', L.t, 's', 'low'], ['Stalls', ST.stalls, '', 'low']],
+        good: [L.moved ? null : 'Kept the car still the whole time', 'You know where every control is'].filter(Boolean) };
+    },
+  },
+  {
+    id: 'moveoff', title: 'Moving off & stopping', skill: 'Pull away smoothly and stop exactly at a line, 3 times.',
+    pose: ['v', 0, 1, 20], engine: true, focus: ['pedals'], rules: {},
+    tips: m => [
+      m ? 'Moving off: clutch down → 1st gear → a little gas (~1500 rpm) → lift the clutch slowly to the bite point (the engine note drops) → release the brake → lift the clutch the rest of the way.'
+        : 'Moving off: brake on → D → release the brake slowly (the car creeps) → gently add gas.',
+      'Smooth beats fast: squeeze every pedal over about a second.',
+      'Stopping: look at the line early, brake gently and progressively, then ease off just before the car stops.',
+      `Reference point: from your seat the line disappears under the bonnet when it is about ${HIDDEN} m from your front bumper. Once it disappears, you have about ${HIDDEN} m left to stop.`,
+      'The countdown boards beside the road mark 20, 10 and 5 m to each line. The stop gauge (above the lane gauge) shows the exact distance.',
+      m ? 'Press the clutch down just before you stop (below ~10 km/h), or the engine stalls.' : 'Keep the brake pressed once you\'ve stopped.'],
+    goal: 'Stop with your front bumper on each yellow line.',
+    start(L) {
+      L.lines = [70, 130, 190]; L.k = 0; L.res = []; L.stillT = 0; L.odoStop = T.odo; L.prevGap = 99;
+      L.lines.forEach(z => { laneLine('v', 0, 1, z, 0xffd400); for (const d of [20, 10, 5]) countBoard('v', 0, 1, z - d, d); });
+    },
+    tick(L, dt) {
+      const z = L.lines[L.k], gap = bumperTo('v', 1, z);
+      L.stopGap = gap;
+      if (L.prevGap > HIDDEN && gap <= HIDDEN && car.vx > 0.5) hint('okRef', `The line just went under the bonnet: about ${HIDDEN} m left. Ease the car to a stop now.`, 0);
+      L.prevGap = gap;
+      L.goal = `Stop with your bumper on yellow line ${L.k + 1}/3: ${Math.max(0, gap).toFixed(0)} m to go`;
+      L.progress = L.res.map((e, i) => `Line ${i + 1}: ${Math.abs(e) < 0.05 ? 'spot on' : e > 0 ? e.toFixed(1) + ' m short' : (-e).toFixed(1) + ' m past'}`).join(' · ');
+      L.stillT = Math.abs(car.vx) < 0.05 ? L.stillT + dt : 0;
+      const finish = err => {
+        L.res.push(err); L.odoStop = T.odo; L.k++;
+        if (Math.abs(err) <= 1) hint('okLine', `🎯 Spot on: ${Math.abs(err).toFixed(1)} m from the line`, 0);
+        else hint(err > 0 ? 'okShort' : 'okPast', err > 0 ? `Stopped ${err.toFixed(1)} m short. Next time keep rolling a bit longer before braking.` : `Stopped ${(-err).toFixed(1)} m past the line. Start braking earlier.`, 0);
+        if (L.k >= L.lines.length) L.done = true;
+      };
+      if (L.stillT > 0.8 && T.odo - L.odoStop > 5) finish(gap);
+      else if (gap < -4) finish(gap);
+    },
+    grade(L) {
+      const errs = L.res.map(Math.abs), avg = mean(errs);
+      let stars = 1;
+      if (errs.every(e => e <= 3) && ST.harsh <= 1) stars = 2;
+      if (errs.every(e => e <= 1.2) && ST.harsh === 0 && ST.stabs <= 1 && ST.stalls === 0) stars = 3;
+      return { stars, metrics: [['Avg distance from line', avg, 'm', 'low'], ['Harsh brakes', ST.harsh, '', 'low'], ['Jerky pedal presses', ST.stabs, '', 'low'], ['Stalls', ST.stalls, '', 'low']],
+        good: [avg <= 1.2 && 'Accurate stopping', ST.harsh === 0 && 'Gentle braking', ST.stabs === 0 && 'Smooth accelerator', manual && ST.stalls === 0 && 'No stalls'].filter(Boolean) };
+    },
+  },
+  {
+    id: 'speed', title: 'Speed control', skill: 'Hold a steady 30 km/h on a long straight.',
+    pose: ['v', 0, 1, 10], engine: true, focus: ['pedals', 'speed'], rules: {},
+    tips: m => [
+      'Glance at the speedometer, then back at the road. Don\'t stare at it.',
+      'Hold the accelerator still; make tiny adjustments, not big presses.',
+      'Lift off slightly before you\'re over the speed. The car takes a moment to respond.',
+      m ? 'At 30 km/h use 2nd or 3rd gear (about 2000–2500 rpm).' : 'The automatic picks the gear; just keep the pedal steady.'],
+    goal: 'Reach 30 km/h by the green line and hold 26–34 km/h until the red line. Then stop.',
+    start(L) { L.a = 80; L.b = 340; L.samples = []; laneLine('v', 0, 1, L.a, 0x22cc55); laneLine('v', 0, 1, L.b, 0xff3344); L.outT = 0; },
+    tick(L, dt) {
+      const kmh = Math.abs(car.vx) * 3.6, toA = bumperTo('v', 1, L.a), toB = bumperTo('v', 1, L.b);
+      if (toA > 0) L.goal = `Build up to 30 km/h: green line in ${toA.toFixed(0)} m`;
+      else if (toB > 0) {
+        L.samples.push(kmh);
+        const inb = L.samples.filter(k => k >= 26 && k <= 34).length / L.samples.length;
+        L.goal = `Hold 26–34 km/h · ${Math.round(inb * 100)}% in band · red line in ${toB.toFixed(0)} m`;
+        L.outT = kmh > 34 || kmh < 26 ? L.outT + dt : 0;
+        if (L.outT > 1.5) { L.outT = -3; kmh > 34 ? hint('fast', `A bit fast (${Math.round(kmh)} km/h): ease off a touch and hold the pedal still.`, 6) : hint('slow', `A bit slow (${Math.round(kmh)} km/h): a little more gas, then hold it steady.`, 6); }
+        if (manual && car.gear === 1 && kmh > 20) hint('lowGear', 'Change up: 1st gear is only for moving off. Use 2nd or 3rd at 30 km/h.');
+      } else {
+        L.goal = 'Done holding speed. Brake gently and stop.';
+        if (Math.abs(car.vx) < 0.05 || car.z > 385) L.done = true;
+      }
+    },
+    grade(L) {
+      const inb = L.samples.length ? L.samples.filter(k => k >= 26 && k <= 34).length / L.samples.length : 0, sd = std(L.samples);
+      const stars = inb >= 0.85 && ST.harsh === 0 ? 3 : inb >= 0.65 ? 2 : 1;
+      return { stars, metrics: [['Time in 26–34 km/h', inb * 100, '%', 'high'], ['Speed wobble (±)', sd, 'km/h', 'low'], ['Harsh brakes', ST.harsh, '', 'low']],
+        good: [inb >= 0.85 && 'Very steady speed', sd < 2 && 'Small, smooth adjustments'].filter(Boolean) };
+    },
+  },
+  {
+    id: 'lane', title: 'Lane keeping', skill: 'Stay in the middle of the LEFT lane along a straight.',
+    pose: ['v', 0, 1, 10], engine: true, focus: ['steer'], rules: { lane: 1 },
+    tips: m => [
+      'Look far down the road, where you\'ll be in 3–4 seconds, not just over the bonnet.',
+      'In a right-hand-drive car you sit near the centre line. The centre line should look like it runs toward the right side of the bonnet.',
+      'Make small, early steering corrections. Big late ones cause weaving.',
+      'Use the lane gauge (bottom) and blue width guides (△ to toggle) to learn where the car is.'],
+    goal: 'Drive at 25–35 km/h to the red line, staying centred in your lane. Then stop.',
+    start(L) { L.a = 40; L.b = 360; L.devs = []; laneLine('v', 0, 1, L.b, 0xff3344); L.cross0 = ST.crossings; },
+    tick(L) {
+      const toB = bumperTo('v', 1, L.b);
+      if (toB > 0) {
+        if (car.z > L.a && R.lane && Math.abs(car.vx) > 3) L.devs.push(R.lane.off - HW / 2);
+        L.goal = `Stay centred in the left lane · red line in ${toB.toFixed(0)} m`;
+        L.progress = L.devs.length ? `Avg offset ${rms(L.devs).toFixed(2)} m · centre-line crossings ${ST.crossings - L.cross0}` : '';
+        if (Math.abs(car.vx) * 3.6 > 40) hint('fast', 'Slow down to about 30 km/h. It\'s easier to steer smoothly.', 10);
+      } else {
+        L.goal = 'Well driven. Brake gently and stop.';
+        if (Math.abs(car.vx) < 0.05 || car.z > 385) L.done = true;
+      }
+    },
+    grade(L) {
+      const r = rms(L.devs), bias = mean(L.devs), x = ST.crossings - L.cross0;
+      const stars = r < 0.35 && x === 0 && ST.kerb === 0 ? 3 : r < 0.6 && x <= 1 && ST.kerb <= 1 ? 2 : 1;
+      const improve = [];
+      if (bias > 0.3) improve.push(`On average you sat ${bias.toFixed(2)} m toward the kerb. Move slightly right.`);
+      if (bias < -0.3) improve.push(`On average you sat ${(-bias).toFixed(2)} m toward the centre line. Move slightly left.`);
+      return { stars, improve, metrics: [['Avg offset from lane centre', r, 'm', 'low'], ['Centre-line crossings', x, '', 'low'], ['Kerb touches', ST.kerb, '', 'low'], ['Steering sawing', ST.saw, '', 'low']],
+        good: [r < 0.35 && 'Well centred', x === 0 && 'Never crossed the centre line', ST.saw === 0 && 'Smooth steering'].filter(Boolean) };
+    },
+  },
+  {
+    id: 'left', title: 'Left turns', skill: 'Four left turns around the outer road.',
+    pose: ['v', 0, 1, 20], engine: true, focus: ['turns', 'steer'], rules: { lane: 1, junction: 1 },
+    tips: m => [
+      'Routine: Mirror → Signal → Position → Speed → Look (MSPSL).',
+      'Signal about 30 m before the turn, then slow to about 15 km/h before you start steering.',
+      'Left turns are tight: stay close to the left kerb and don\'t swing out to the right first.',
+      'You sit on the right, so the left kerb is far away. Start steering when the kerb corner is level with you, and check the left mirror.',
+      m ? 'Use 2nd gear for the turn.' : 'Keep gentle gas through the turn.'],
+    goal: 'Follow the outer road and make four left turns.',
+    start(L) { L.n0 = 0; },
+    tick(L) {
+      const lefts = ST.turns.filter(x => x.turn === 'L');
+      L.progress = `Turns: ${lefts.map(x => x.good ? '✓' : '△').join(' ')} (${lefts.length}/4)`;
+      const a = R.ahead;
+      if (a && a.X.type === 'corner') {
+        L.goal = `Left turn ahead in ${Math.max(0, Math.round(a.dist))} m`;
+        if (a.dist < 45 && a.dist > 5 && car.ind !== 'L') hint('sigNow', 'Mirror, then signal LEFT now.', 8);
+        if (a.dist < 25 && Math.abs(car.vx) * 3.6 > 22) hint('slowNow', `Slow down: ${Math.round(Math.abs(car.vx) * 3.6)} km/h is too fast for this turn. Aim for 15.`, 8);
+      } else L.goal = 'Follow the road, keep left.';
+      if (lefts.length >= 4 && !R.post) L.done = true;
+    },
+    grade: L => gradeTurns('L'),
+  },
+  {
+    id: 'right', title: 'Right turns', skill: 'Four right turns around the outer road, crossing the other lane.',
+    pose: ['v', 0, -1, 380], engine: true, focus: ['turns', 'steer'], rules: { lane: 1, junction: 1 },
+    tips: m => [
+      'Mirror → signal RIGHT about 30 m before → stay in your lane, close to the centre line.',
+      'Slow to about 15 km/h. Turning right crosses the oncoming lane, so look into the new road first.',
+      'Don\'t cut the corner: drive to the middle of the junction, then turn.',
+      'Finish in the LEFT lane of the new road.'],
+    goal: 'Follow the outer road and make four right turns.',
+    tick(L) {
+      const rights = ST.turns.filter(x => x.turn === 'R');
+      L.progress = `Turns: ${rights.map(x => x.good ? '✓' : '△').join(' ')} (${rights.length}/4)`;
+      const a = R.ahead;
+      if (a && a.X.type === 'corner') {
+        L.goal = `Right turn ahead in ${Math.max(0, Math.round(a.dist))} m`;
+        if (a.dist < 45 && a.dist > 5 && car.ind !== 'R') hint('sigNow', 'Mirror, then signal RIGHT now.', 8);
+        if (a.dist < 25 && Math.abs(car.vx) * 3.6 > 22) hint('slowNow', `Slow down: ${Math.round(Math.abs(car.vx) * 3.6)} km/h is too fast for this turn. Aim for 15.`, 8);
+      } else L.goal = 'Follow the road, keep left.';
+      if (rights.length >= 4 && !R.post) L.done = true;
+    },
+    grade: L => gradeTurns('R'),
+  },
+  {
+    id: 'lights', title: 'Traffic lights', skill: 'Drive straight through three sets of lights.',
+    pose: ['h', 1, 1, 12], engine: true, focus: ['junction', 'pedals'], rules: { lane: 1, junction: 1, speed: 1 },
+    tips: m => [
+      'RED: stop at the white line. AMBER: stop, unless you\'re so close that stopping would be unsafe. GREEN: go if the way is clear.',
+      'Look at the light early (40–50 m) and ask yourself: "If it changes now, can I stop?"',
+      'Stop with your front bumper just behind the white line.',
+      m ? 'While waiting at a red, select neutral or hold the clutch down with the brake on.' : 'Hold the brake while waiting.'],
+    goal: 'Go straight on through 3 traffic-light junctions.',
+    start(L) { L.jn = 0; laneLine('h', 1, 1, 370, 0xff3344); },
+    tick(L) {
+      L.progress = `Lights passed: ${L.jn}/3`;
+      const a = R.ahead;
+      if (a && a.ap.control === 'lights') {
+        const st = lightState(a.X, a.d, now());
+        L.goal = `Traffic light ${Math.max(0, Math.round(a.dist))} m: ${st === 'R' ? '🔴 RED' : st === 'A' ? '🟠 AMBER' : '🟢 GREEN'}`;
+      } else if (L.jn >= 3) {
+        L.goal = 'All lights done. Stop gently at the red line.';
+        if (Math.abs(car.vx) < 0.05 || car.x > 385) L.done = true;
+      } else L.goal = 'Go straight on, keep left.';
+    },
+    onJunction(L, X, turn) { if (X.type === 'lights') L.jn++; },
+    grade(L) {
+      const reds = ST.issues.red || 0, ls = ST.stops.filter(s => s.control === 'lights');
+      const neat = ls.every(s => s.gap >= -0.3 && s.gap <= 3);
+      const stars = reds ? 1 : neat && ST.harsh === 0 ? 3 : 2;
+      return { stars, metrics: [['Red lights run', reds, '', 'low'], ['Stops at a red', ls.length, '', 'high'], ['Avg gap to line', ls.length ? mean(ls.map(s => s.gap)) : 0, 'm', 'low'], ['Harsh brakes', ST.harsh, '', 'low']],
+        good: [!reds && 'Obeyed every light', ls.length && neat && 'Neat stop positions', ST.harsh === 0 && 'Planned stops early'].filter(Boolean) };
+    },
+  },
+  {
+    id: 'stopsign', title: 'STOP signs', skill: 'Stop fully at a STOP line, then turn.',
+    pose: ['h', 2, -1, 90], engine: true, focus: ['junction', 'turns'], rules: { lane: 1, junction: 1, speed: 1 },
+    tips: m => [
+      'STOP means the wheels stop completely, every time, even when the road is clear. Count "one-and-two".',
+      'Stop with your bumper at the white line. If you can\'t see, creep forward slowly after stopping.',
+      'Signal before you reach the line (left or right, your choice).',
+      'Then turn as you practised: slow, and into the LEFT lane.'],
+    goal: 'Stop at the STOP line ahead, then turn left or right.',
+    tick(L) {
+      const a = R.ahead;
+      if (a && a.ap.control === 'stop') L.goal = `STOP line in ${Math.max(0, Math.round(a.dist))} m`;
+      else if (ST.turns.length) { L.goal = 'Good. Continue and stop when ready.'; if (Math.abs(car.vx) < 0.05) L.done = true; }
+      else L.goal = 'Turn left or right.';
+    },
+    grade(L) {
+      const missed = ST.issues.stop || 0, s = ST.stops.find(x => x.control === 'stop'), tr = ST.turns[0];
+      const stars = missed ? 1 : s && s.gap >= -0.3 && s.gap <= 2.5 && tr && tr.good ? 3 : 2;
+      return { stars, metrics: [['Full stop made', missed ? 0 : 1, '', 'high'], ['Gap to line', s ? s.gap : 0, 'm', 'low'], ['Turn quality', tr && tr.good ? 1 : 0, '', 'high']],
+        good: [!missed && 'Stopped fully at the line', tr && tr.good && 'Clean turn afterwards'].filter(Boolean) };
+    },
+  },
+  {
+    id: 'town', title: 'Town route', skill: 'Everything together: follow 8 directions through town.',
+    pose: ['v', 1, 1, 30], engine: true, focus: ['turns', 'junction', 'steer', 'pedals', 'speed'], rules: { lane: 1, junction: 1, speed: 1 },
+    tips: m => [
+      'This is your mock test: lights, STOP signs, turns and the speed limit all count.',
+      'Listen for each direction and plan early: mirror, signal, position, speed.',
+      'Test standard: no serious mistakes and at most 15 minor ones.'],
+    goal: 'Follow my directions.',
+    start(L) { L.target = 8; L.done8 = 0; L.instr = null; L.forKey = ''; },
+    tick(L) {
+      L.progress = `Junctions: ${L.done8}/${L.target}`;
+      const a = R.ahead;
+      if (a && a.dist < 80 && a.dist > -2) {
+        const key = a.X.i + ',' + a.X.j + ':' + a.d.join();
+        if (L.forKey !== key) {
+          const l = leftOf(a.d), opts = [];
+          for (const e of a.X.exits) {
+            if (same(e, a.d)) opts.push('S');
+            else if (same(e, l)) opts.push('L', 'L');
+            else if (same(e, [-l[0], -l[1]])) opts.push('R', 'R');
+          }
+          L.instr = opts[(Math.random() * opts.length) | 0]; L.forKey = key;
+        }
+        L.goal = `In ${Math.max(0, Math.round(a.dist))} m, at the junction, ${{ L: 'turn LEFT ⬅', R: 'turn RIGHT ➡', S: 'go STRAIGHT on ⬆' }[L.instr]}`;
+      } else if (!L.instr) L.goal = 'Follow the road. Keep left.';
+    },
+    onJunction(L, X, turn) {
+      if (L.instr && turn !== L.instr && turn !== 'U') fault('route', 'minor', `Wrong way: I asked you to go ${TURN_NAME[L.instr]}`, 2);
+      L.done8++; L.instr = null; L.forKey = '';
+      if (L.done8 >= L.target) L.done = true;
+    },
+    grade() {
+      const ser = faults.filter(f => f.sev === 'serious').length, min = faults.filter(f => f.sev === 'minor').length;
+      return { stars: ser === 0 && min <= 5 ? 3 : ser === 0 && min <= 15 ? 2 : 1, metrics: [['Serious mistakes', ser, '', 'low'], ['Minor mistakes', min, '', 'low'], ['Good turns', ST.turns.filter(t => t.good).length, '', 'high']],
+        good: [ser === 0 && 'No serious mistakes: test standard!'].filter(Boolean) };
+    },
+  },
+];
+const FREE = { id: 'free', title: 'Free drive', pose: ['v', 1, 1, 30], engine: true, focus: null, rules: { lane: 1, junction: 1, speed: 1 }, tick(L) { L.goal = 'Free drive. Keep left, obey the signs, signal before turning.'; L.progress = `Junctions driven: ${L.jn || 0}`; }, onJunction(L) { L.jn = (L.jn || 0) + 1; } };
+
+function gradeTurns(dir) {
+  const ts = ST.turns.filter(x => x.turn === dir), good = ts.filter(x => x.good).length;
+  const stars = good >= 4 ? 3 : good >= 2 ? 2 : 1;
+  return { stars, metrics: [['Good turns', good, '/4', 'high'], ['Avg entry speed', mean(ts.map(x => x.kmh)), 'km/h', 'low'], ['Avg signal distance', mean(ts.map(x => Math.max(0, x.lead))), 'm', 'high'], ['Swung wide', ts.filter(x => x.wide).length, '', 'low'], ['Kerb clips', ts.filter(x => x.kerb).length, '', 'low']],
+    good: [ts.every(x => x.lead >= 15) && 'Signalled early every time', ts.every(x => x.kmh <= 22) && 'Good turning speed', ts.every(x => !x.wide) && 'Kept to the correct lane'].filter(Boolean) };
+}
+
+// ═════════════════════ progress (saved in this browser) ═════════════════════
+let PROG = { levels: {}, issues: {} };
+try { Object.assign(PROG, JSON.parse(localStorage.getItem('ds-progress') || '{}')); } catch {}
+const saveProg = () => { try { localStorage.setItem('ds-progress', JSON.stringify(PROG)); } catch {} };
+const lp = id => PROG.levels[id] || (PROG.levels[id] = { best: 0, attempts: 0, history: [] });
+const unlocked = k => k === 0 || lp(LEVELS[k - 1].id).best >= 2;
+const starStr = n => '★'.repeat(n) + '☆'.repeat(3 - n);
+
+// ═════════════════════ level runtime ═════════════════════
+let LV = null, steps = [], stepIdx = 0;
+function startLevel(def) {
+  initAudio();
+  LV = { def, t: 0, goal: '', progress: '', done: false };
+  faults = []; cool = {}; resetStats();
+  Object.assign(R, { wrongT: 0, strT: 0, spdT: 0, coastT: 0, lugT: 0, inBox: null, entry: null, apMin: Infinity, apKey: '', ahead: null, lane: null, ldw: false, post: null, stopKey: '' });
+  clearLevelObjs();
+  const [ax, k, d, pos] = def.pose;
+  resetCar(...lanePose(ax, k, d, pos));
+  if (ax === 'v' && d > 0 && k === 0) car.x = k * S + HW - 1.2;             // parked at the kerb
+  if (def.engine) { car.running = true; car.we = IDLE / RPM; }
+  steps = def.steps ? def.steps(manual) : []; stepIdx = 0;
+  def.start?.(LV);
+  $('lessonTitle').textContent = (def.id === 'free' ? '' : `Level ${LEVELS.indexOf(def) + 1} · `) + def.title + (manual ? ' · manual' : ' · auto');
+  $('nMinor').textContent = 0; $('nSerious').textContent = 0; $('faultList').innerHTML = '';
+  for (const o of ['menu', 'brief', 'summary']) $(o).classList.add('hidden');
+  active = true; renderSteps();
+  $('coachMain').textContent = def.goal || '';
+}
+function renderSteps() {
+  $('steps').innerHTML = steps.map((s, i) => `<li class="${i < stepIdx ? 'done' : i === stepIdx ? 'cur' : ''}">${s[0]}</li>`).join('');
+  $('routeInfo').textContent = LV ? LV.progress || '' : '';
+}
+function levelTick(dt) {
+  if (!LV) return;
+  LV.t += dt;
+  const def = LV.def;
+  if (steps.length && steps[stepIdx]) {
+    LV.goal = steps[stepIdx][0];
+    if (steps[stepIdx][1](LV)) { stepIdx++; beep(880, 0.06); renderSteps(); if (stepIdx >= steps.length) LV.done = true; }
+  }
+  def.tick?.(LV, dt);
+  $('coachMain').textContent = LV.goal;
+  if ($('routeInfo').textContent !== (LV.progress || '')) $('routeInfo').textContent = LV.progress || '';
+  if (LV.done) endLevel(false);
+}
+function onJunctionDone(X, turn) { if (LV && LV.def.onJunction) LV.def.onJunction(LV, X, turn); }
+
+function endLevel(aborted) {
+  if (!active) return;
+  active = false;
+  const def = LV.def, idx = LEVELS.indexOf(def);
+  // top recurring issues this attempt (personalised "work on next")
+  // only this level's skill (+ real road-rule mistakes, which have no HINT_CAT): one thing at a time
+  const inFocus = k => !def.focus || !HINT_CAT[k] || def.focus.includes(HINT_CAT[k]);
+  const top = Object.entries(ST.issues).filter(([k]) => ISSUE_TXT[k] && inFocus(k)).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  let html = '';
+  if (def.id === 'free' || aborted) {
+    $('sumTitle').textContent = aborted && def.id !== 'free' ? 'Level stopped' : 'Free drive';
+    $('sumStars').textContent = '';
+  } else {
+    const g = def.grade(LV), P = lp(def.id), prev = P.history[P.history.length - 1];
+    $('sumTitle').textContent = `Level ${idx + 1} complete: ${def.title}`;
+    $('sumStars').textContent = starStr(g.stars);
+    const rows = g.metrics.map(([label, v, unit, better]) => {
+      const pv = prev?.metrics?.[label];
+      let trend = '';
+      if (pv !== undefined && Math.abs(pv - v) > 1e-6) trend = ((better === 'low') === (v < pv)) ? '<span class="good">▲ better</span>' : '<span class="minor">▼ worse</span>';
+      const f = x => (Number.isInteger(x) ? x : x.toFixed(1)) + (unit ? ' ' + unit : '');
+      return `<tr><td>${label}</td><td><b>${f(v)}</b></td><td class="small">${pv !== undefined ? 'last ' + f(pv) : ''}</td><td>${trend}</td></tr>`;
+    }).join('');
+    html += `<h2>Your numbers</h2><table class="met">${rows}</table>`;
+    if (g.good?.length) html += `<h2>What went well</h2><ul>${g.good.map(x => `<li class="good">${x}</li>`).join('')}</ul>`;
+    const improve = [...(g.improve || []), ...top.map(([k, n]) => `${ISSUE_TXT[k]} <span class="small">(${n}×)</span>`)].slice(0, 3);
+    html += `<h2>Work on next</h2>${improve.length ? `<ul>${improve.map(x => `<li>${x}</li>`).join('')}</ul>` : '<div class="good">Nothing major. Try for ★★★, or move on!</div>'}`;
+    const wasLocked = !unlocked(idx + 1);
+    P.attempts++; P.best = Math.max(P.best, g.stars);
+    P.history.push({ t: Date.now(), stars: g.stars, metrics: Object.fromEntries(g.metrics.map(m => [m[0], m[1]])), focus: improve.map(x => x.replace(/<[^>]+>/g, '').replace(/\s*\(\d+×\)$/, '')) });
+    if (P.history.length > 20) P.history.shift();
+    for (const [k, n] of Object.entries(ST.issues)) PROG.issues[k] = (PROG.issues[k] || 0) + n;
+    saveProg();
+    if (g.stars < 2) html += `<p class="small">Get ★★ to unlock the next level. Mistakes are normal: each try teaches you something.</p>`;
+    else if (wasLocked && LEVELS[idx + 1]) html += `<p class="good">🔓 Unlocked level ${idx + 2}: ${LEVELS[idx + 1].title}</p>`;
+  }
+  if (!html && top.length) html = `<h2>Things to work on</h2><ul>${top.map(([k, n]) => `<li>${ISSUE_TXT[k]} <span class="small">(${n}×)</span></li>`).join('')}</ul>`;
+  $('sumBody').innerHTML = html || '<p class="small">No data this time.</p>';
+  const next = LEVELS[idx + 1];
+  $('sumNext').classList.toggle('hidden', !(next && unlocked(idx + 1)));
+  $('sumRetry').classList.toggle('hidden', def.id === 'free');
+  showOverlay('summary');
+}
+
+// ═════════════════════ menus (mouse + wheel) ═════════════════════
+let navIdx = 0, briefDef = null;
+function showOverlay(id) {
+  for (const o of ['menu', 'brief', 'summary']) $(o).classList.toggle('hidden', o !== id);
+  if (id === 'menu') renderMenu();
+  navIdx = 0; drawFocus();
+}
+const curOverlay = () => ['menu', 'brief', 'summary'].find(o => !$(o).classList.contains('hidden'));
+const navItems = () => { const o = curOverlay(); return o ? [...$(o).querySelectorAll('[data-nav]')].filter(b => !b.disabled && !b.classList.contains('hidden')) : []; };
+function drawFocus() { const it = navItems(); document.querySelectorAll('[data-nav]').forEach(b => b.classList.remove('focus')); if (it[navIdx]) { it[navIdx].classList.add('focus'); it[navIdx].scrollIntoView({ block: 'nearest' }); } }
+function navHat(dir) {
+  const it = navItems(), n = it.length; if (!n) return;
+  if (dir === 'U') navIdx = (navIdx - 1 + n) % n;
+  if (dir === 'D') navIdx = (navIdx + 1) % n;
+  if (curOverlay() === 'menu') { if (dir === 'L') setMode(false); if (dir === 'R') setMode(true); }
+  drawFocus();
+}
+function navButton(i) {
+  if (i === btn('circle')) return navBack();
+  if (i !== btn('cross')) return;
+  const it = navItems(); if (it[navIdx]) it[navIdx].click();
+}
+function navBack() { const o = curOverlay(); if (o === 'brief' || o === 'summary') showOverlay('menu'); }
+
+function renderMenu() {
+  let total = 0;
+  $('levelList').innerHTML = LEVELS.map((d, k) => {
+    const P = lp(d.id), open = unlocked(k); total += P.best;
+    return `<button class="lvl" data-nav data-level="${k}" ${open ? '' : 'disabled'}><span><b>${k + 1} · ${d.title}</b><span class="small">${open ? d.skill : '🔒 Get ★★ on the level before'}</span></span><span class="stars">${open ? starStr(P.best) : ''}</span></button>`;
+  }).join('');
+  $('progTotal').textContent = `${total} / ${LEVELS.length * 3} ★`;
+  $('levelList').querySelectorAll('[data-level]').forEach(b => b.onclick = () => openBrief(LEVELS[+b.dataset.level]));
+  // focus the first level you haven't mastered yet
+}
+function openBrief(def) {
+  briefDef = def;
+  const k = LEVELS.indexOf(def), P = lp(def.id);
+  $('briefNum').textContent = `Level ${k + 1} of ${LEVELS.length} · ${manual ? 'manual' : 'automatic'} · best ${starStr(P.best)} · ${P.attempts} attempt${P.attempts === 1 ? '' : 's'}`;
+  $('briefTitle').textContent = def.title;
+  $('briefSkill').textContent = def.skill;
+  $('briefTips').innerHTML = def.tips(manual).map(t => `<li>${t}</li>`).join('');
+  const last = P.history[P.history.length - 1];
+  const mine = [...(last?.focus || [])];
+  const habit = Object.entries(PROG.issues).filter(([k2]) => ISSUE_TXT[k2] && (!def.focus || def.focus.includes(HINT_CAT[k2]) || ['red', 'stop', 'wrong', 'signal'].includes(k2))).sort((a, b) => b[1] - a[1])[0];
+  if (habit && !mine.includes(ISSUE_TXT[habit[0]])) mine.push(`Your most common habit so far: ${ISSUE_TXT[habit[0]].toLowerCase()} (${habit[1]}×)`);
+  $('briefMineWrap').classList.toggle('hidden', !mine.length);
+  $('briefMine').innerHTML = mine.map(t => `<li>${t}</li>`).join('');
+  $('briefGoal').textContent = def.goal;
+  showOverlay('brief');
+}
+$('briefGo').onclick = () => startLevel(briefDef);
+$('briefBack').onclick = () => showOverlay('menu');
+$('btnFree').onclick = () => startLevel(FREE);
+$('sumMenu').onclick = () => showOverlay('menu');
+$('sumRetry').onclick = () => openBrief(LV.def);
+$('sumNext').onclick = () => openBrief(LEVELS[LEVELS.indexOf(LV.def) + 1]);
+function setMode(m) { manual = m; $('mManual').classList.toggle('sel', m); $('mAuto').classList.toggle('sel', !m); try { localStorage.setItem('ds-manual', m ? '1' : '0'); } catch {} }
+$('mManual').onclick = () => setMode(true); $('mAuto').onclick = () => setMode(false); setMode(manual);
+showOverlay('menu');
+
+function placeOnLane() {
+  const w = where(car.x, car.z), f = fwd();
+  if (w.onV && !w.onH) { const d = Math.sign(f[1]) || 1; resetKeep(...lanePose('v', w.i, d, car.z)); }
+  else if (w.onH && !w.onV) { const d = Math.sign(f[0]) || 1; resetKeep(...lanePose('h', w.j, d, car.x)); }
+  else if (LV) resetKeep(...lanePose(...LV.def.pose));
+}
+function resetKeep(x, z, h) { const keep = { running: car.running, we: car.we, gear: car.gear, ag: car.ag }; resetCar(x, z, h); Object.assign(car, keep); }
+
+// ═════════════════════ wheel rotation range (WebHID, config only) ═════════════════════
+async function applyRange(prompt) {
+  const st = t => { $('rangeStatus').textContent = t; };
+  if (!('hid' in navigator)) return st('WebHID not available: use Chrome.');
+  try {
+    let dev = (await navigator.hid.getDevices()).find(d => d.vendorId === 0x046d);
+    if (!dev && prompt) [dev] = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x046d }] });
+    if (!dev) return prompt && st('No wheel picked.');
+    if (!dev.opened) await dev.open();
+    await dev.sendReport(0, new Uint8Array([0xf8, 0x81, 900 & 0xff, 900 >> 8, 0, 0, 0]));
+    st('Wheel set to 900° ✓');
+  } catch (e) { st('Could not set range: ' + e.message); }
+}
+$('btnRange').onclick = () => applyRange(true);
+applyRange(false);
+
+// ═════════════════════ audio ═════════════════════
+let AC = null, eng = null;
+function initAudio() {
+  if (AC) return;
+  try {
+    AC = new AudioContext();
+    const o1 = AC.createOscillator(), o2 = AC.createOscillator(), f = AC.createBiquadFilter(), g = AC.createGain();
+    o1.type = 'sawtooth'; o2.type = 'square'; f.type = 'lowpass'; g.gain.value = 0;
+    o1.connect(f); o2.connect(f); f.connect(g); g.connect(AC.destination); o1.start(); o2.start();
+    eng = { o1, o2, f, g };
+  } catch { AC = null; }
+}
+function beep(freq, len = 0.12) {
+  if (!AC) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.frequency.value = freq; g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  o.connect(g).connect(AC.destination); o.start(t); o.stop(t + len + 0.02);
+}
+function audioTick(inp) {
+  if (!eng) return;
+  const t = AC.currentTime, rpm = car.we * RPM, fz = Math.max(rpm, 1) / 30;
+  eng.o1.frequency.setTargetAtTime(fz, t, 0.03); eng.o2.frequency.setTargetAtTime(fz / 2, t, 0.03);
+  eng.f.frequency.setTargetAtTime(250 + rpm * 0.3, t, 0.05);
+  eng.g.gain.setTargetAtTime(active && car.running ? 0.035 + 0.09 * inp.thr : active && rpm > 100 ? 0.02 : 0, t, 0.05);
+}
+
+// ═════════════════════ cameras ═════════════════════
+let camMode = 0;
+const camPos = new THREE.Vector3();
+let mirror = null, mcam = null;
+try {
+  mirror = new THREE.WebGLRenderer({ canvas: $('mirror'), antialias: false });
+  mirror.setSize(360, 90, false);
+  mcam = new THREE.PerspectiveCamera(32, 4, 0.5, 600);
+} catch { mirror = null; }
+function local(lx, ly, lz) { const s = Math.sin(car.h), c = Math.cos(car.h); return new THREE.Vector3(car.x + c * lx + s * lz, ly, car.z - s * lx + c * lz); }
+function updateCams(dt) {
+  if (camMode === 0) { camera.position.copy(local(EYE.x, EYE.y, EYE.z)); camera.lookAt(local(EYE.x, 0.9, 25)); }
+  else { camPos.lerp(local(0, 3.2, -8), 1 - Math.exp(-dt * 5)); camera.position.copy(camPos); camera.lookAt(local(0, 1, 3)); }
+  if (mirror) {
+    $('mirror').style.display = camMode === 0 ? '' : 'none';
+    if (camMode === 0) { mcam.position.copy(local(0, 1.3, 0.2)); mcam.lookAt(local(0, 1.0, -40)); mirror.render(scene, mcam); }
+  }
+}
+
+// ═════════════════════ main loop ═════════════════════
+let lastT = performance.now(), blinkPrev = false;
+function frame(nowMs) {
+  const dt = Math.min(0.05, (nowMs - lastT) / 1000); lastT = nowMs;
+  const inp = readInput(dt), t = now();
+
+  if (active) {
+    car.delta = inp.wheel ? -inp.steer * (CAL.steering.lockDegrees / 2 / 15) * DEG : -inp.steer * 0.5 / (1 + Math.abs(car.vx) / 15);
+    if (!manual && car.gear === 1) {
+      const rpm = car.we * RPM;
+      if (t > car.shiftT) {
+        if (car.ag < 5 && rpm > 2300 + 2700 * inp.thr && car.vx > 3) { car.ag++; car.shiftT = t + 0.6; }
+        else if (car.ag > 1 && rpm < 1150) { car.ag--; car.shiftT = t + 0.6; }
+      }
+      if (car.vx < 1) car.ag = 1;
+    }
+    for (let k = 0; k < 8; k++) step(dt / 8, inp);
+    telTick(dt, inp);
+    coachTick(dt, inp);
+    rules(dt);
+    levelTick(dt);
+  }
+
+  for (const X of XS) for (const a of Object.values(X.ap)) if (a.lamps) {
+    const s = lightState(X, a.d, t);
+    if (s !== a.state) { a.state = s; for (const k of ['R', 'A', 'G']) a.lamps[k].material.color.setHex(LAMP[k][k === s ? 0 : 1]); }
+  }
+
+  carG.position.set(car.x, 0, car.z); carG.rotation.y = car.h;
+  wheels.forEach((wh, i) => { if (i < 2) wh.p.rotation.y = car.delta; wh.w.rotation.x += car.vx * dt / RW; });
+  updateCams(dt);
+  renderer.render(scene, camera);
+
+  const rpm = car.we * RPM, blink = car.ind && Math.floor(nowMs / 380) % 2 === 0;
+  $('spd').textContent = Math.round(Math.abs(car.vx) * 3.6);
+  $('rpmT').textContent = Math.round(rpm / 10) * 10;
+  $('rpmB').style.width = clamp(rpm / 7000 * 100, 0, 100) + '%';
+  $('engT').textContent = car.running ? 'engine on' : 'engine off';
+  $('modeT').textContent = manual ? 'manual' : `automatic${car.gear === 1 ? ' · ' + car.ag : ''}`;
+  $('gear').textContent = manual ? (GEAR_NAMES[car.gear] ?? car.gear) : ({ '-1': 'R', 0: 'N', 1: 'D' })[car.gear];
+  $('pC').style.height = inp.clu * 100 + '%'; $('pB').style.height = inp.brk * 100 + '%'; $('pA').style.height = inp.thr * 100 + '%';
+  $('indL').classList.toggle('on', car.ind === 'L' && blink); $('indR').classList.toggle('on', car.ind === 'R' && blink);
+  if (!!blink !== blinkPrev) { blinkPrev = !!blink; if (car.ind) beep(blink ? 1500 : 1100, 0.02); }
+  if (now() > subUntil) $('coachSub').textContent = '';
+
+  // stop gauge: level target line, or a STOP line / red light ahead
+  let gap = null;
+  if (active && LV) {
+    if (LV.stopGap !== undefined && LV.k < (LV.lines?.length ?? 0)) gap = LV.stopGap;
+    else if (R.ahead && R.ahead.dist < 30 && (R.ahead.ap.control === 'stop' || (R.ahead.ap.control === 'lights' && lightState(R.ahead.X, R.ahead.d, t) !== 'G'))) gap = R.ahead.dist - 2.05;
+  }
+  $('stopG').classList.toggle('hidden', gap === null || gap > 30);
+  if (gap !== null && gap <= 30) {
+    const pos = 80 - clamp(gap, -5, 30) / 30 * 80;               // line drawn at 80% of the bar
+    $('sCar').style.left = `calc(${clamp(pos, 0, 100)}% - 4px)`;
+    $('stopNum').textContent = gap < 0 ? `${(-gap).toFixed(1)} m past` : `${gap.toFixed(1)} m`;
+    $('stopLbl').textContent = gap < 0 ? 'over the line' : 'to the line';
+    $('stopNum').style.color = Math.abs(gap) <= 1 ? 'var(--ok)' : gap < -1 ? 'var(--bad)' : gap < 10 ? 'var(--warn)' : 'var(--fg)';
+    $('stopTip').textContent = gap > HIDDEN ? '' : gap > 1 ? 'line is under the bonnet now: ease to a stop' : gap >= -1 ? 'stop here ✓' : 'too far';
+  }
+
+  const ln = active ? R.lane : null;
+  $('laneG').classList.toggle('off', !ln);
+  if (ln) {
+    const pct = (HW - ln.off) / (2 * HW) * 100;
+    const mk = $('carMark'); mk.style.left = `calc(${pct}% - 11.65%)`;
+    mk.style.background = ln.toCentre < 0 ? 'var(--bad)' : (ln.toCentre < 0.3 || ln.toKerb < 0.3) ? 'var(--warn)' : 'var(--ok)';
+    $('laneTxt').textContent = ln.toCentre < 0 ? `over the centre line by ${(-ln.toCentre).toFixed(1)} m` : `kerb ${Math.max(0, ln.toKerb).toFixed(1)} m · centre line ${ln.toCentre.toFixed(1)} m`;
+  } else $('laneTxt').textContent = R.inBox ? 'in a junction' : 'lane gauge: drive along a road';
+  audioTick(inp);
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

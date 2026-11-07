@@ -1,0 +1,18 @@
+{
+  "device": "G29 Driving Force Racing Wheel (Vendor: 046d Product: c24f)",
+  "mode": "PS3",
+  "browser": "Chrome on macOS, Gamepad API, mapping: \"\" (raw HID order)",
+  "calibratedOn": "2026-11-07",
+  "steering": { "axis": 0, "left": -1, "right": 1, "center": 0.0, "lockDegrees": 900 },
+  "pedals": {
+    "clutch":   { "axis": 1, "rest": 1, "full": -1 },
+    "throttle": { "axis": 2, "rest": 1, "full": -1 },
+    "brake":    { "axis": 5, "rest": 1, "full": -1, "note": "stiff; a hard press reached ~-0.8" }
+  },
+  "buttons": { "paddleRight": 4, "paddleLeft": 5 },
+  "dpad": { "axis": 9, "neutral": 1.286 },
+  "notes": [
+    "Normalize pedals: pressed = (rest - value) / (rest - full), clamped 0..1",
+    "Pedal axes can read garbage until each pedal is touched once after connect"
+  ]
+}

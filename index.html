@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>G29 Driving Sim</title>
+<style>
+  :root { --bg: rgba(12,14,18,.72); --fg: #e9edf2; --dim: #8b95a3; --acc: #ff4d4f; --ok: #3ccf7a; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg);
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  canvas { display: block; }
+  .box { position: fixed; background: var(--bg); border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(6px); }
+  #hud { left: 16px; bottom: 16px; min-width: 230px; }
+  #spd { font-size: 44px; font-weight: 700; }
+  #gear { position: absolute; right: 12px; top: 8px; font-size: 32px; font-weight: 700; color: var(--acc); }
+  .bar { height: 6px; background: #2a2f38; border-radius: 3px; margin: 4px 0 8px; position: relative; overflow: hidden; }
+  .bar i { position: absolute; top: 0; bottom: 0; background: var(--fg); }
+  #panel { right: 16px; top: 16px; width: 250px; }
+  #panel button { width: 100%; margin: 3px 0; padding: 7px; border: 0; border-radius: 6px; background: #2b3240; color: var(--fg); font: inherit; cursor: pointer; }
+  #panel button:hover { background: #3a4456; }
+  #panel label { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--dim); }
+  #panel input[type=range] { flex: 1; }
+  .dim { color: var(--dim); }
+  #map { right: 16px; bottom: 16px; padding: 6px; }
+  #overlay { left: 50%; top: 22%; transform: translateX(-50%); font-size: 18px; text-align: center; display: none; padding: 18px 24px; }
+  #laps { left: 16px; top: 16px; }
+  #laps b { font-size: 18px; }
+</style>
+</head>
+<body>
+<div id="laps" class="box"><div>LAP <b id="lapT">--:--.---</b></div><div class="dim">last <span id="lastT">—</span> · best <span id="bestT">—</span></div></div>
+
+<div id="hud" class="box">
+  <div id="gear">1</div>
+  <div><span id="spd">0</span> <span class="dim">km/h</span></div>
+  <div class="dim">steer</div><div class="bar"><i id="bSteer"></i></div>
+  <div class="dim">throttle</div><div class="bar"><i id="bThr" style="background:var(--ok)"></i></div>
+  <div class="dim">brake</div><div class="bar"><i id="bBrk" style="background:var(--acc)"></i></div>
+  <div class="dim">ffb out</div><div class="bar"><i id="bFfb" style="background:#5aa9ff"></i></div>
+  <div id="dev" class="dim">No wheel seen yet: turn it or press a pedal</div>
+</div>
+
+<div id="panel" class="box">
+  <button id="btnFfb">Connect force feedback</button>
+  <button id="btnCal">Calibrate pedals</button>
+  <button id="btnCam">Camera: chase (C)</button>
+  <button id="btnReset">Reset to track (T)</button>
+  <label>FFB gain <input id="gain" type="range" min="0" max="1.5" step="0.05" value="0.8"></label>
+  <label><input id="inv" type="checkbox"> invert FFB direction</label>
+  <div id="ffbStatus" class="dim" style="margin-top:6px">FFB: not connected</div>
+  <div class="dim" style="margin-top:8px">Keys: WASD / arrows · R reverse · C cam · T reset<br>Wheel: right paddle = drive, left = reverse</div>
+</div>
+
+<canvas id="map" class="box" width="170" height="170"></canvas>
+<div id="overlay" class="box"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const DEG = Math.PI / 180;
+
+// ───────────────────────── config (per-browser convenience) ─────────────────────────
+let cfg = { pedals: null, gain: 0.8, invert: false, range: 900, ratio: 14 };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem('g29cfg') || '{}')); } catch {}
+const saveCfg = () => { try { localStorage.setItem('g29cfg', JSON.stringify(cfg)); } catch {} };
+$('gain').value = cfg.gain; $('inv').checked = cfg.invert;
+$('gain').oninput = e => { cfg.gain = +e.target.value; saveCfg(); };
+$('inv').onchange = e => { cfg.invert = e.target.checked; saveCfg(); };
+
+// ───────────────────────── scene ─────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9cc7ef);
+scene.fog = new THREE.Fog(0x9cc7ef, 200, 1100);
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 3000);
+scene.add(new THREE.HemisphereLight(0xe4f1ff, 0x3a5a2a, 0.85));
+const sun = new THREE.DirectionalLight(0xffffff, 0.75); sun.position.set(200, 300, 100); scene.add(sun);
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000), new THREE.MeshLambertMaterial({ color: 0x4f7d3a }));
+ground.rotation.x = -Math.PI / 2; scene.add(ground);
+
+// ───────────────────────── track ─────────────────────────
+const N = 1400, HALF = 7, KERB = 1.2;
+const raw = [[0,0],[180,0],[260,60],[250,180],[150,230],[80,180],[0,220],[-120,200],[-180,100],[-120,20]];
+const curve = new THREE.CatmullRomCurve3(raw.map(([x, z]) => new THREE.Vector3(x * 1.6, 0, z * 1.6)), true, 'centripetal');
+const P = curve.getSpacedPoints(N); P.pop();
+const L = []; // left normal per sample: forward f=(fx,fz) → left=(fz,-fx)
+for (let i = 0; i < N; i++) {
+  const a = P[(i - 1 + N) % N], b = P[(i + 1) % N];
+  let tx = b.x - a.x, tz = b.z - a.z; const m = Math.hypot(tx, tz); tx /= m; tz /= m;
+  L.push([tz, -tx]);
+}
+function ribbon(o1, o2, y, colorAt, from = 0, to = N) {
+  const pos = [], col = [], c = new THREE.Color();
+  const e = (i, o) => [P[i].x + L[i][0] * o, y, P[i].z + L[i][1] * o];
+  for (let i = from; i < to; i++) {
+    const k = i % N, j = (i + 1) % N;
+    const A = e(k, o1), B = e(k, o2), C = e(j, o1), D = e(j, o2);
+    pos.push(...A, ...B, ...C, ...B, ...D, ...C);
+    c.setHex(colorAt(i)); for (let n = 0; n < 6; n++) col.push(c.r, c.g, c.b);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  scene.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+}
+const ROAD = 0x3b3c40;
+ribbon(-HALF, HALF, 0.05, () => ROAD);
+ribbon(HALF, HALF + KERB, 0.06, i => (i >> 2) & 1 ? 0xd8262e : 0xf2f2f2);
+ribbon(-HALF - KERB, -HALF, 0.06, i => (i >> 2) & 1 ? 0xd8262e : 0xf2f2f2);
+ribbon(-0.15, 0.15, 0.08, i => (i >> 3) & 1 ? 0xeeeeee : ROAD);
+ribbon(-HALF, HALF, 0.09, () => 0xffffff, 0, 2); // start/finish
+
+function nearest(x, z, hint = -1, win = 50) {
+  let best = 1e18, bi = 0;
+  const s = hint < 0 ? 0 : hint - win, e = hint < 0 ? N : hint + win;
+  for (let k = s; k < e; k++) {
+    const i = ((k % N) + N) % N, dx = x - P[i].x, dz = z - P[i].z, d = dx * dx + dz * dz;
+    if (d < best) { best = d; bi = i; }
+  }
+  return { i: bi, dist: Math.sqrt(best), lat: (x - P[bi].x) * L[bi][0] + (z - P[bi].z) * L[bi][1] };
+}
+
+// trees
+{
+  const geo = new THREE.ConeGeometry(2.4, 8, 7); geo.translate(0, 4, 0);
+  const COUNT = 600, trees = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0x2d5a27 }), COUNT);
+  const d = new THREE.Object3D(); let n = 0;
+  while (n < COUNT) {
+    const x = (Math.random() - 0.5) * 1400 + 64, z = (Math.random() - 0.5) * 1200 + 184;
+    if (nearest(x, z).dist < HALF + 12) continue;
+    const s = 0.7 + Math.random() * 0.9; d.position.set(x, 0, z); d.scale.set(s, s, s); d.updateMatrix();
+    trees.setMatrixAt(n++, d.matrix);
+  }
+  scene.add(trees);
+}
+
+// ───────────────────────── car mesh ─────────────────────────
+const carG = new THREE.Group();
+const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.55, 4.3), new THREE.MeshLambertMaterial({ color: 0xd7262e }));
+body.position.y = 0.58;
+const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 2), new THREE.MeshLambertMaterial({ color: 0x222831 }));
+cabin.position.set(0, 1.1, -0.3);
+carG.add(body, cabin);
+const wGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.26, 16); wGeo.rotateZ(Math.PI / 2);
+const wMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+const wheels = [[0.85, 1.3], [-0.85, 1.3], [0.85, -1.4], [-0.85, -1.4]].map(([x, z]) => {
+  const pivot = new THREE.Group(); pivot.position.set(x, 0.34, z);
+  const w = new THREE.Mesh(wGeo, wMat); pivot.add(w); carG.add(pivot); return { pivot, w };
+});
+scene.add(carG);
+
+// ───────────────────────── physics: dynamic bicycle model, RWD ─────────────────────────
+// Body frame ISO: x forward, y left, yaw + = left. World: forward=(sin h, cos h), left=(cos h, -sin h).
+const M = 1250, IZ = 1800, A = 1.3, B = 1.4, WB = A + B, G = 9.81, CF = 90000, CR = 100000;
+const car = { x: 0, z: 0, h: 0, vx: 0, vy: 0, r: 0, delta: 0, reverse: false, Fyf: 0, fmf: 1, af: 0 };
+let track = { i: 0, dist: 0, lat: 0 };
+function resetCar(i) {
+  i = ((i % N) + N) % N;
+  const f = [-L[i][1], L[i][0]];
+  Object.assign(car, { x: P[i].x, z: P[i].z, h: Math.atan2(f[0], f[1]), vx: 0, vy: 0, r: 0 });
+  track = nearest(car.x, car.z);
+}
+resetCar(N - 15);
+
+function step(dt, inp) {
+  const d = car.delta, v = car.vx;
+  const off = Math.abs(track.lat) > HALF + KERB;
+  const mu = off ? 0.65 : 1.05;
+  const FzF = M * G * B / WB, FzR = M * G * A / WB;
+  let drive = 0;
+  if (!car.reverse) drive = inp.thr * Math.min(7000, 160000 / Math.max(Math.abs(v), 1));
+  else if (v > -9) drive = -inp.thr * 3500;
+  const brake = Math.abs(v) > 0.3 ? -Math.sign(v) * inp.brk * 13000 : 0;
+  const Fx = drive + brake - 0.42 * v * Math.abs(v) - (off ? 320 : 15) * v;
+
+  const vxs = Math.max(Math.abs(v), 1);
+  const af = Math.atan2(car.vy + A * car.r, vxs) - d;
+  const ar = Math.atan2(car.vy - B * car.r, vxs);
+  const fmf = mu * FzF;
+  const fxr = Math.min(Math.abs(drive) + 0.4 * Math.abs(brake), mu * FzR * 0.97); // friction circle on rear
+  const fmr = Math.sqrt(Math.max((mu * FzR) ** 2 - fxr * fxr, (0.2 * mu * FzR) ** 2));
+  const Fyf = -fmf * Math.tanh(CF * af / fmf);
+  const Fyr = -fmr * Math.tanh(CR * ar / fmr);
+
+  car.vx += (Fx / M + car.vy * car.r) * dt;
+  car.vy += ((Fyf * Math.cos(d) + Fyr) / M - car.vx * car.r) * dt;
+  car.r += ((A * Fyf * Math.cos(d) - B * Fyr) / IZ) * dt;
+
+  // blend to kinematic model at low speed / reverse (dynamic model is singular near 0)
+  const w = car.vx > 0 ? clamp((car.vx - 1) / 4, 0, 1) : 0;
+  car.r = w * car.r + (1 - w) * (car.vx * Math.tan(d) / WB);
+  car.vy *= w;
+  if (inp.brk > 0.05 && inp.thr < 0.05 && Math.abs(car.vx) < 0.3) car.vx = 0;
+
+  car.h += car.r * dt;
+  const s = Math.sin(car.h), c = Math.cos(car.h);
+  car.x += (s * car.vx + c * car.vy) * dt;
+  car.z += (c * car.vx - s * car.vy) * dt;
+  car.Fyf = Fyf; car.fmf = fmf; car.af = af;
+}
+
+// ───────────────────────── input ─────────────────────────
+const keys = {};
+let camMode = 0, lastBtn = -1, prevBtns = [], kbSteer = 0, prevSteer = 0;
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyC') toggleCam();
+  if (e.code === 'KeyR') car.reverse = !car.reverse;
+  if (e.code === 'KeyT') resetCar(track.i);
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+
+function getPad() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  return pads.find(p => /logitech|g29|wheel|046d/i.test(p.id)) || pads[0] || null;
+}
+const pedal = (pad, m) => m && pad.axes[m.i] !== undefined ? clamp((pad.axes[m.i] - m.rest) / (m.full - m.rest), 0, 1) : 0;
+
+function readInput(dt) {
+  const pad = getPad();
+  const kL = keys.KeyA || keys.ArrowLeft, kR = keys.KeyD || keys.ArrowRight;
+  kbSteer += (((kR ? 1 : 0) - (kL ? 1 : 0)) - kbSteer) * Math.min(1, dt * 6);
+  const inp = { steer: kbSteer, thr: (keys.KeyW || keys.ArrowUp) ? 1 : 0, brk: (keys.KeyS || keys.ArrowDown) ? 1 : 0, wheel: false, pad };
+  if (pad) {
+    $('dev').textContent = pad.id.slice(0, 40) + (cfg.pedals ? '' : ' · pedals not calibrated') + (lastBtn >= 0 ? ` · btn ${lastBtn}` : '');
+    if (calib) calibTick(pad);
+    if (Math.abs(kbSteer) < 0.01) { inp.steer = pad.axes[0] || 0; inp.wheel = true; }
+    if (cfg.pedals && !calib) {
+      inp.thr = Math.max(inp.thr, pedal(pad, cfg.pedals.thr));
+      inp.brk = Math.max(inp.brk, pedal(pad, cfg.pedals.brk));
+    }
+    pad.buttons.forEach((b, i) => {
+      if (b.pressed && !prevBtns[i]) {
+        lastBtn = i;
+        if (i === 4) car.reverse = false;   // right paddle (G29 typical)
+        if (i === 5) car.reverse = true;    // left paddle
+      }
+      prevBtns[i] = b.pressed;
+    });
+  }
+  return inp;
+}
+
+// ───────────────────────── pedal calibration wizard ─────────────────────────
+let calib = null;
+const CAL_STEPS = [['thr', 'THROTTLE'], ['brk', 'BRAKE']];
+function startCalib() {
+  const pad = getPad();
+  if (!pad) return flash('Turn the wheel or press a pedal first so the browser sees it.');
+  calib = { step: 0, base: [...pad.axes], cand: -1, peak: 0, peakVal: 0, saw: false, res: {} };
+}
+function calibTick(pad) {
+  const [key, label] = CAL_STEPS[calib.step];
+  const used = Object.values(calib.res).map(r => r.i);
+  if (!calib.saw) {
+    let bi = -1, bd = 0;
+    pad.axes.forEach((v, i) => { if (i === 0 || used.includes(i)) return; const d = Math.abs(v - calib.base[i]); if (d > bd) { bd = d; bi = i; } });
+    if (bd > 0.5) { calib.saw = true; calib.cand = bi; }
+  } else {
+    const v = pad.axes[calib.cand], d = Math.abs(v - calib.base[calib.cand]);
+    if (d > calib.peak) { calib.peak = d; calib.peakVal = v; }
+    if (d < 0.15 && calib.peak > 0.8) {
+      calib.res[key] = { i: calib.cand, rest: calib.base[calib.cand], full: calib.peakVal };
+      Object.assign(calib, { step: calib.step + 1, saw: false, peak: 0 });
+      if (calib.step >= CAL_STEPS.length) { cfg.pedals = calib.res; saveCfg(); calib = null; return flash('Pedals calibrated ✓', 1500); }
+    }
+  }
+  showOverlay(`Press <b>${CAL_STEPS[calib.step][1]}</b> all the way down, then release`
+    + (calib.saw ? `<br><span class="dim">axis ${calib.cand} · ${(calib.peak * 50).toFixed(0)}%</span>` : ''));
+}
+let flashT = 0;
+function showOverlay(html) { $('overlay').innerHTML = html; $('overlay').style.display = 'block'; }
+function flash(html, ms = 2500) { showOverlay(html); clearTimeout(flashT); flashT = setTimeout(() => { if (!calib) $('overlay').style.display = 'none'; }, ms); }
+
+// ───────────────────────── force feedback over WebHID (Logitech classic protocol, as in Linux hid-lg4ff) ─────────────────────────
+let hid = null, hidBusy = false, lastForce = -1, lastLeds = -1;
+const ffbStatus = (t, ok) => { $('ffbStatus').textContent = 'FFB: ' + t; $('ffbStatus').style.color = ok ? 'var(--ok)' : ''; };
+const send = bytes => hid.sendReport(0, new Uint8Array(bytes));
+async function connectFFB() {
+  if (!('hid' in navigator)) return ffbStatus('WebHID unavailable. Use Chrome or Edge.');
+  try {
+    const [dev] = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x046d }] });
+    if (!dev) return;
+    if (!dev.opened) await dev.open();
+    hid = dev;
+    await send([0xf5, 0, 0, 0, 0, 0, 0]);                                   // built-in autocenter off
+    await send([0xf8, 0x81, cfg.range & 0xff, cfg.range >> 8, 0, 0, 0]);    // rotation range
+    const pid = dev.productId.toString(16);
+    ffbStatus(`connected ${dev.productName} (pid ${pid})` + (pid !== 'c24f' ? ' · if no force, set wheel switch to PS3' : ''), true);
+  } catch (e) { ffbStatus(e.message); hid = null; }
+}
+async function hidTick(force, leds) {
+  if (!hid || hidBusy) return;
+  hidBusy = true;
+  try {
+    if (force !== lastForce) { await send([0x11, 0x08, force, 0x80, 0, 0, 0]); lastForce = force; } // slot1 constant force
+    if (leds !== lastLeds) { await send([0xf8, 0x12, leds, 0, 0, 0, 0]); lastLeds = leds; }        // rev LEDs
+  } catch (e) { ffbStatus(e.message); }
+  finally { hidBusy = false; }
+}
+addEventListener('beforeunload', () => { if (hid) { send([0x13, 0, 0, 0, 0, 0, 0]); send([0x14, 0, 0, 0, 0, 0, 0]); } });
+
+// returns [-1,1], + = push wheel to the right (same sign as steering axis)
+function ffbForce(inp, dt) {
+  const sp = Math.abs(car.vx), w = clamp(sp / 8, 0, 1);
+  const sat = clamp(Math.abs(car.af) / 0.12 - 1, 0, 1);                // past peak slip → wheel goes light
+  let f = (car.Fyf / car.fmf) * 0.85 * (1 - 0.65 * sat) * w;           // self-aligning torque
+  f += -inp.steer * 0.25 * (1 - w);                                     // parking spring
+  f += -((inp.steer - prevSteer) / Math.max(dt, 1e-3)) * 0.03;          // damper
+  const a = Math.abs(track.lat);
+  if (a > HALF && a <= HALF + KERB) f += Math.sin(performance.now() / 18) * 0.18 * clamp(sp / 10, 0, 1);   // kerb buzz
+  else if (a > HALF + KERB) f += (Math.random() - 0.5) * 0.35 * clamp(sp / 10, 0, 1);                       // grass
+  prevSteer = inp.steer;
+  return clamp(f * cfg.gain, -1, 1);
+}
+
+// ───────────────────────── camera / UI ─────────────────────────
+const camPos = new THREE.Vector3();
+function toggleCam() { camMode ^= 1; $('btnCam').textContent = 'Camera: ' + (camMode ? 'cockpit' : 'chase') + ' (C)'; }
+function updateCam(dt) {
+  const s = Math.sin(car.h), c = Math.cos(car.h);
+  if (camMode === 1) {
+    const lx = 0.38, lz = -0.1; // driver seat: local +x = left
+    camera.position.set(car.x + c * lx + s * lz, 1.15, car.z - s * lx + c * lz);
+    camera.lookAt(car.x + c * lx + s * 30, 0.9, car.z - s * lx + c * 30);
+  } else {
+    camPos.lerp(new THREE.Vector3(car.x - s * 7.5, 3, car.z - c * 7.5), 1 - Math.exp(-dt * 6));
+    camera.position.copy(camPos);
+    camera.lookAt(car.x + s * 3, 1, car.z + c * 3);
+  }
+}
+$('btnFfb').onclick = connectFFB;
+$('btnCal').onclick = startCalib;
+$('btnCam').onclick = toggleCam;
+$('btnReset').onclick = () => resetCar(track.i);
+
+// minimap
+const mapC = $('map'), mctx = mapC.getContext('2d');
+const xs = P.map(p => p.x), zs = P.map(p => p.z);
+const mnx = Math.min(...xs), mxx = Math.max(...xs), mnz = Math.min(...zs), mxz = Math.max(...zs);
+const msc = 150 / Math.max(mxx - mnx, mxz - mnz);
+const mp = (x, z) => [10 + (x - mnx) * msc, 10 + (z - mnz) * msc];
+const mapBg = document.createElement('canvas'); mapBg.width = mapBg.height = 170;
+{ const g = mapBg.getContext('2d'); g.strokeStyle = '#cfd6df'; g.lineWidth = 3; g.beginPath();
+  P.forEach((p, i) => { const [x, y] = mp(p.x, p.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.stroke(); }
+
+const fmt = t => t == null ? '—' : `${Math.floor(t / 60)}:${(t % 60).toFixed(3).padStart(6, '0')}`;
+const setBar = (id, v, centered) => {
+  const el = $(id);
+  if (centered) { el.style.left = (50 + Math.min(0, v) * 50) + '%'; el.style.width = Math.abs(v) * 50 + '%'; }
+  else { el.style.left = 0; el.style.width = v * 100 + '%'; }
+};
+
+// ───────────────────────── main loop ─────────────────────────
+let lastT = performance.now(), lapStart = null, lastLap = null, bestLap = null, halfway = false;
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  const inp = readInput(dt);
+
+  car.delta = inp.wheel
+    ? -inp.steer * (cfg.range / 2 / cfg.ratio) * DEG                    // 1:1 with the physical wheel
+    : -inp.steer * 0.42 / (1 + Math.abs(car.vx) / 30);                  // keyboard: speed-sensitive
+  const SUB = 8;
+  for (let k = 0; k < SUB; k++) { track = nearest(car.x, car.z, track.i); step(dt / SUB, inp); }
+
+  // laps
+  const prevI = loop.prevI ?? track.i;
+  if (track.i > N * 0.45 && track.i < N * 0.55) halfway = true;
+  if (prevI > N * 0.9 && track.i < N * 0.1) {
+    const t = now / 1000;
+    if (lapStart !== null && halfway) { lastLap = t - lapStart; if (bestLap === null || lastLap < bestLap) bestLap = lastLap; }
+    lapStart = t; halfway = false;
+  }
+  loop.prevI = track.i;
+
+  // visuals
+  carG.position.set(car.x, 0, car.z); carG.rotation.y = car.h;
+  wheels.forEach((wh, i) => { if (i < 2) wh.pivot.rotation.y = car.delta; wh.w.rotation.x += car.vx * dt / 0.34; });
+  updateCam(dt);
+  renderer.render(scene, camera);
+
+  // HUD
+  const kmh = Math.abs(car.vx) * 3.6, gear = Math.min(6, Math.floor(kmh / 45) + 1);
+  const revFrac = gear === 6 ? clamp((kmh - 225) / 45, 0, 1) : (kmh % 45) / 45;
+  $('spd').textContent = kmh.toFixed(0);
+  $('gear').textContent = car.reverse ? 'R' : gear;
+  $('lapT').textContent = lapStart === null ? '--:--.---' : fmt(now / 1000 - lapStart);
+  $('lastT').textContent = fmt(lastLap); $('bestT').textContent = fmt(bestLap);
+  const f = ffbForce(inp, dt);
+  setBar('bSteer', clamp(inp.steer, -1, 1), true); setBar('bThr', inp.thr); setBar('bBrk', inp.brk); setBar('bFfb', f, true);
+
+  // FFB + rev LEDs
+  const byte = clamp(Math.round(0x80 + f * 127 * (cfg.invert ? -1 : 1)), 0, 255);
+  const ledN = Math.round(revFrac * 5);
+  hidTick(byte, (1 << ledN) - 1);
+
+  mctx.clearRect(0, 0, 170, 170); mctx.drawImage(mapBg, 0, 0);
+  const [mx, my] = mp(car.x, car.z); mctx.fillStyle = '#ff4d4f'; mctx.beginPath(); mctx.arc(mx, my, 4, 0, 7); mctx.fill();
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
