@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Driving School</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="scrim" class="scrim"></div>
+
+  <!-- ===== Driving HUD ===== -->
+  <div id="hud" class="hud" hidden>
+    <div class="hud-tl">
+      <div class="eyebrow" id="hud-eyebrow"></div>
+      <div class="hud-title" id="hud-title"></div>
+      <div class="hud-goal" id="hud-goal"></div>
+      <ol class="live-steps" id="hud-steps"></ol>
+      <div class="pbar" id="pbar" hidden><span id="p-time"></span><span id="p-rep"></span><span class="dots" id="p-dots"></span></div>
+    </div>
+    <div class="hud-tr">
+      <button class="chip" id="btn-assist" title="Assist level (G)"></button>
+      <button class="chip" id="btn-cam" title="Camera (V)"></button>
+      <button class="chip icon" id="btn-voice" title="Instructor voice (N)"></button>
+      <button class="chip icon" id="btn-sound" title="Engine sound (M)"></button>
+      <button class="chip" id="btn-exit" title="Back to lessons (Esc)">Exit</button>
+    </div>
+
+    <div id="cue" class="cue" aria-live="polite"></div>
+    <div id="banner" class="banner" hidden></div>
+    <div id="stall" class="stall" hidden>Stalled. Press the clutch fully down to restart.</div>
+
+    <div id="getset" class="getset" hidden>
+      <div class="getset-title" id="getset-title">Get set</div>
+      <ul class="pose" id="pose"></ul>
+      <div class="getset-warn" id="getset-warn" hidden></div>
+      <div class="getset-hint" id="getset-hint"></div>
+    </div>
+
+    <div class="hud-bottom">
+      <div class="gauge">
+        <div class="speed"><span id="speed">0</span><small>km/h</small></div>
+        <div class="gear-wrap"><div class="gear" id="gear">1</div><div class="gear-hint" id="gear-hint">paddles</div></div>
+        <div class="dist" id="dist" hidden><span id="dist-v">0</span><small id="dist-l">m to line</small></div>
+        <div class="rpm">
+          <div class="rpm-bar"><div class="rpm-fill" id="rpm-fill"></div><div class="rpm-idle"></div></div>
+          <div class="rpm-label"><span id="rpm">0</span> rpm</div>
+        </div>
+      </div>
+      <div class="hud-hint" id="hud-hint">✕ / R retry · Esc exit</div>
+      <div class="pedals" id="pedals">
+        <div class="pedal" data-p="clu"><div class="track"><div class="bite"></div><div class="fill"></div><div class="gmark"></div></div><label>Clutch</label></div>
+        <div class="pedal" data-p="brk"><div class="track"><div class="fill"></div><div class="gmark"></div></div><label>Brake</label></div>
+        <div class="pedal" data-p="thr"><div class="track"><div class="fill"></div><div class="gmark"></div></div><label>Gas</label></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Setup ===== -->
+  <section class="screen" data-screen="setup" hidden>
+    <div class="card setup">
+      <div class="eyebrow">Driving School</div>
+      <h1>Let's check your wheel</h1>
+      <p class="lede" id="setup-status">Press any button on your wheel so the browser can see it.</p>
+      <div class="live" id="live">
+        <div class="live-row"><span>Steering</span><div class="meter center"><i id="lv-steer"></i></div></div>
+        <div class="live-row"><span>Clutch</span><div class="meter"><i id="lv-clu"></i></div></div>
+        <div class="live-row"><span>Brake</span><div class="meter"><i id="lv-brk"></i></div></div>
+        <div class="live-row"><span>Gas</span><div class="meter"><i id="lv-thr"></i></div></div>
+        <div class="live-row"><span>Gear paddles</span><div class="gear-test" id="lv-gear">tap a paddle</div></div>
+      </div>
+      <div class="getset-warn" id="setup-warn" hidden>A pedal reads full while you're not pressing it. Click <b>Flip pedals</b>, or <b>Calibrate my wheel</b>.</div>
+      <p class="small" id="setup-note">Turn the wheel and press each pedal. The bars should follow. If a pedal looks stuck, press it once to wake it up.</p>
+
+      <div class="wizard" id="wizard" hidden>
+        <div class="wiz-step" id="wiz-step"></div>
+        <div class="wiz-title" id="wiz-title"></div>
+        <div class="wiz-hint" id="wiz-hint"></div>
+        <div class="row">
+          <button class="btn ghost" id="wiz-skip" hidden>Skip</button>
+          <button class="btn ghost" id="wiz-cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="row" id="setup-actions">
+        <button class="btn primary" id="setup-go">Looks right, continue</button>
+        <button class="btn" id="setup-cal">Calibrate my wheel</button>
+        <button class="btn" id="setup-flip">Flip pedals</button>
+        <button class="btn ghost" id="setup-kb">Use keyboard instead</button>
+      </div>
+      <details class="keys">
+        <summary>Keyboard controls</summary>
+        <p>↑ / W gas · ↓ / S brake · ← → / A D steer · hold Space for clutch (it lifts slowly when you let go; hold Shift to pause it at the bite point) · E / Q gear up/down · Enter OK · R retry · Esc exit</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- ===== Ladder ===== -->
+  <section class="screen" data-screen="ladder" hidden>
+    <div class="ladder-wrap">
+      <header class="ladder-head">
+        <div>
+          <div class="eyebrow">Driving School</div>
+          <h1>Your lessons</h1>
+          <p class="lede" id="ladder-lede">Five moments, one hard thing each. Practise until it feels easy: 5 clean reps in a row counts as passed.</p>
+        </div>
+        <div class="row">
+          <button class="chip" id="ladder-gearbox" title="Switch between manual and automatic"></button>
+          <button class="chip" id="ladder-wheel"></button>
+          <button class="chip" id="ladder-reset" title="Clear progress">Reset</button>
+        </div>
+      </header>
+      <ol class="ladder" id="ladder"></ol>
+    </div>
+  </section>
+
+  <!-- ===== Brief ===== -->
+  <section class="screen" data-screen="brief" hidden>
+    <div class="card brief">
+      <div class="eyebrow" id="brief-eyebrow"></div>
+      <h1 id="brief-title"></h1>
+      <p class="lede" id="brief-why"></p>
+      <div class="goal"><span>Goal</span><p id="brief-goal"></p></div>
+      <div class="cols">
+        <div>
+          <h3>How to do it</h3>
+          <ol class="steps" id="brief-steps"></ol>
+        </div>
+        <div>
+          <h3>A clean rep</h3>
+          <ul class="checks" id="brief-pass"></ul>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn" id="brief-demo">▶ Watch how it's done</button>
+        <button class="btn primary" id="brief-practice">Practise →</button>
+        <button class="btn" id="brief-drive">Test yourself</button>
+        <button class="btn ghost" id="brief-back">Lessons</button>
+      </div>
+      <p class="small">Practice is many reps, no menus in between. The help fades as you get it right. Press <kbd>✕</kbd> or <kbd>Enter</kbd> to start.</p>
+    </div>
+  </section>
+
+  <!-- ===== Debrief ===== -->
+  <section class="screen" data-screen="debrief" hidden>
+    <div class="replay-tag" id="replay-tag">Replay · <span class="you">you</span> vs <span class="g">ghost</span></div>
+    <div class="sheet">
+      <div class="sheet-left">
+        <div class="result" id="db-result"></div>
+        <h2 id="db-headline"></h2>
+        <div class="tip"><span>Try this</span><p id="db-tip"></p></div>
+        <p class="insight" id="db-insight" hidden></p>
+        <ul class="criteria" id="db-criteria"></ul>
+      </div>
+      <div class="sheet-right">
+        <div class="transport">
+          <button class="chip" id="db-play">❚❚</button>
+          <button class="chip" id="db-speed">1×</button>
+          <div class="events" id="db-events"></div>
+        </div>
+        <canvas id="chart" class="chart"></canvas>
+        <div class="legend"><span><i class="solid"></i>you</span><span><i class="dash"></i>ghost (good run)</span><span id="lg-bite"><i class="lg-bite"></i>bite zone</span><span class="muted">drag to scrub</span></div>
+        <div class="row actions">
+          <button class="btn primary" id="db-retry">↻ Retry</button>
+          <button class="btn" id="db-here">Retry from here</button>
+          <button class="btn" id="db-next" hidden>Next moment →</button>
+          <button class="btn ghost" id="db-demo">Watch demo</button>
+          <button class="btn ghost" id="db-back">Lessons</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Practice summary ===== -->
+  <section class="screen" data-screen="summary" hidden>
+    <div class="card summary">
+      <div class="eyebrow">Practice done</div>
+      <h1 id="sum-title"></h1>
+      <div class="stats">
+        <div><b id="sum-reps">0</b><span>reps</span></div>
+        <div><b id="sum-clean">0</b><span>clean</span></div>
+        <div><b id="sum-streak">0</b><span>best streak</span></div>
+      </div>
+      <div class="sum-dots" id="sum-dots"></div>
+      <h3>How it changed</h3>
+      <ul class="trend" id="sum-trend"></ul>
+      <div class="tip"><span>Next time</span><p id="sum-next"></p></div>
+      <div class="row">
+        <button class="btn primary" id="sum-again">Keep practising</button>
+        <button class="btn" id="sum-test">Test yourself</button>
+        <button class="btn ghost" id="sum-back">Lessons</button>
+      </div>
+    </div>
+  </section>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
