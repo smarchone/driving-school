@@ -4,6 +4,7 @@ import { pointAt, LANE, LANE_CENTER } from './road.js';
 import { CAR } from './physics.js';
 import { LEAD_LEN } from './sim.js';
 import { buildWorld } from './worlds.js';
+import { ZONES } from './zones.js';
 
 const HALF = LANE;          // road half-width
 const SHOULDER = 2;
@@ -308,88 +309,16 @@ export function createRenderer(canvas, variantName = 'town') {
       }
     }
 
-    for (const z of moment.zones) {
-      if (z.type === 'stopLine') {
-        add(ribbon(road, -HALF + 0.1, -0.1, z.s, z.s + 0.45, 0.025, 0.45), white);
-        const tex = canvasTex(256, 128, (g, w, h) => {
-          g.fillStyle = '#f2f2ee'; g.font = 'bold 92px Inter, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-          g.fillText('STOP', w / 2, h / 2);
-        });
-        // Painted "STOP", readable from the approaching driver's seat.
-        const q = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 1.4), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
-        const p = pointAt(road, z.s - 2.6, LANE_CENTER);
-        q.position.set(p.x, p.y + 0.03, p.z);
-        q.rotation.set(-Math.PI / 2, p.h + Math.PI, 0, 'YXZ');
-        world.add(q);
-      }
-      if (z.type === 'brakeMark') {
-        // Painted where the good run starts braking. When it slides under the bonnet: brake.
-        const bar = add(ribbon(road, -HALF + 0.35, -0.35, z.s, z.s + 0.6, 0.028, 0.6), 0xf5b942);
-        const tex = canvasTex(256, 128, (g, w, h) => {
-          g.fillStyle = '#f5b942'; g.font = 'bold 84px Inter, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-          g.fillText('BRAKE', w / 2, h / 2);
-        });
-        const q = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 1.4), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
-        const p = pointAt(road, z.s - 2.2, LANE_CENTER);
-        q.position.set(p.x, p.y + 0.03, p.z);
-        q.rotation.set(-Math.PI / 2, p.h + Math.PI, 0, 'YXZ');
-        world.add(q);
-        assistObjs.push(bar, q);
-      }
-      if (z.type === 'boards') {
-        // Countdown boards on the kerb: real distances you can learn to judge by eye.
-        for (const n of z.marks) {
-          const p = pointAt(road, z.at - n, -HALF - 1.3);
-          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 6), new THREE.MeshLambertMaterial({ color: 0x888888 }));
-          pole.position.set(p.x, p.y + 0.8, p.z);
-          const tex = canvasTex(192, 128, (g, w, h) => {
-            g.fillStyle = '#1f5fbf'; g.fillRect(0, 0, w, h);
-            g.strokeStyle = '#ffffff'; g.lineWidth = 8; g.strokeRect(6, 6, w - 12, h - 12);
-            g.fillStyle = '#ffffff'; g.font = 'bold 64px Inter, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-            g.fillText(`${n} m`, w / 2, h / 2 + 2);
-          });
-          const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.6), new THREE.MeshBasicMaterial({ map: tex }));
-          sign.position.set(p.x, p.y + 1.85, p.z);
-          sign.rotation.y = p.h + Math.PI;
-          world.add(pole, sign);
-        }
-      }
-      if (z.type === 'stopBox') {
-        const m = add(ribbon(road, -HALF + 0.35, -0.35, z.s0, z.s1, 0.03, 0.5), 0x3ee08f, { transparent: true, opacity: 0.38, depthWrite: false });
-        assistObjs.push(m);
-      }
-      if (z.type === 'finish') {
-        const g = new THREE.Group();
-        const mat = new THREE.MeshLambertMaterial({ color: 0x37d6c8, transparent: true, opacity: 0.85 });
-        for (const d of [-HALF - 0.6, 0.6]) {
-          const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.2, 0.18), mat);
-          const p = pointAt(road, z.s, d);
-          post.position.set(p.x, p.y + 1.6, p.z);
-          g.add(post);
-        }
-        const p0 = pointAt(road, z.s, LANE_CENTER);
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(HALF + 1.2, 0.18, 0.18), mat);
-        bar.position.set(p0.x, p0.y + 3.2, p0.z);
-        bar.rotation.y = p0.h;
-        g.add(bar);
-        world.add(g);
-        add(ribbon(road, -HALF + 0.3, -0.3, z.s, z.s + 0.3, 0.025, 0.3), 0x37d6c8);
-      }
-      if (z.type === 'speedSign') {
-        const tex = canvasTex(128, 128, (g, w, h) => {
-          g.fillStyle = '#ffffff'; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill();
-          g.lineWidth = 14; g.strokeStyle = '#d32f2f'; g.beginPath(); g.arc(64, 64, 52, 0, Math.PI * 2); g.stroke();
-          g.fillStyle = '#111'; g.font = 'bold 56px Inter, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-          g.fillText(String(z.limit), 64, 68);
-        });
-        const p = pointAt(road, z.s, -HALF - 1.2);
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6), new THREE.MeshLambertMaterial({ color: 0x888888 }));
-        pole.position.set(p.x, p.y + 1.2, p.z);
-        const sign = new THREE.Mesh(new THREE.CircleGeometry(0.42, 24), new THREE.MeshBasicMaterial({ map: tex }));
-        sign.position.set(p.x, p.y + 2.5, p.z);
-        sign.rotation.y = p.h + Math.PI;
-        world.add(pole, sign);
-      }
+    // Zones (stop lines, signs, gates...): each type is drawn by its builder in zones.js.
+    const kit = {
+      THREE, road, pointAt, add, ribbon, canvasTex, HALF, LANE_CENTER, WHITE: white,
+      place: obj => { world.add(obj); return obj; },
+      assist: (...objs) => { assistObjs.push(...objs); },
+    };
+    for (const z of moment.zones || []) {
+      const Z = ZONES[z.type];
+      if (Z) Z.build(kit, z);
+      else console.warn(`Unknown zone type "${z.type}" in ${moment.id}; add it to zones.js`);
     }
 
     if (lead) { scene.remove(lead); lead = null; }

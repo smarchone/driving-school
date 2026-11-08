@@ -31,15 +31,37 @@ something goes wrong. Finish with Esc for a summary (distance, average speed, wh
 
 ## How it fits together
 
-| File | Role |
-|---|---|
-| `src/physics.js` | Manual hatchback: clutch slip, bite point, stall, hills. 960 Hz fixed step |
-| `src/road.js` | Road centreline, projection; India keeps left |
-| `src/sim.js` | Deterministic sim + 60 Hz telemetry frames, each with a restorable snapshot |
-| `src/instructor.js` | Rule-based detectors (stall + cause, jerk, harsh brake, lane, roll-back, gap…), live cues, evaluation |
-| `src/expert.js` | Scripted good driver using the same controls → the ghost, ghost pedals and demo |
-| `src/moments.js` | The lessons as data: road, start, pose, criteria, cues, expert |
-| `src/render.js` | three.js scene; `src/main.js` the flow; `src/chart.js` debrief chart |
+Generic engines, configured by lessons. A **moment** (a lesson) is data: it names what to draw, which detectors coach,
+what passes, and how the good driver drives. A **mode** is the shape of a visit (test, practice, free drive). Code that
+names a specific lesson belongs in `moments.js`; everything else names only a *kind* of thing, looked up in a registry.
+
+| Layer | File | Role |
+|---|---|---|
+| Simulation | `src/physics.js` | Manual hatchback: clutch slip, bite point, stall, hills; automatic torque converter. 960 Hz fixed step |
+| | `src/road.js` | Road centreline, projection to `(s, d)`; India keeps left |
+| | `src/sim.js` | Deterministic sim + 60 Hz telemetry frames, each with a restorable snapshot |
+| | `src/telemetry.js` | The frame schema: every field with its unit, and which ones the session log saves |
+| Judgment | `src/detectors.js` | **Registry** of mistakes (stall + cause, jerk, harsh brake, over-rev, lane, roll-back, crash, tailgate…): stats always, events when switched on |
+| | `src/instructor.js` | Runs the detectors, the moment's measure() and cues; `evaluate()` → report |
+| Reference | `src/expert.js` | Scripted good driver using the same controls → the ghost, ghost pedals and demo |
+| Teaching | `src/moments.js` | The lessons as data (fields listed at the top of the file) |
+| | `src/modes.js` | **Registry** of visit shapes: test → debrief, practice reps → summary, free drive → summary |
+| | `src/practice.js` | Rep scoring, assist fading, rep splitters for continuous practice (**registry**), practice summary |
+| Experience | `src/zones.js` | **Registry** of things on the road (stop line, BRAKE mark, boards, gate, speed sign…) |
+| | `src/aids.js` | **Registry** of target kinds: distance readout, "you'd stop here" marker, chart marks |
+| | `src/render.js` | three.js scene; `src/main.js` the app shell (screens, HUD, loop); `src/chart.js` debrief chart |
+| Memory | `src/progress.js` | Progress and settings in localStorage; `src/session.js` the session log |
+
+Adding things:
+
+- **A lesson** that reuses existing kinds: a new moment in `moments.js`, then `node school/tools/check.mjs`.
+- **A new mistake**: a detector in `detectors.js`; switch it on with a moment's `detect`.
+- **A new road object / target / way to cut reps**: an entry in `zones.js` / `aids.js` / `SEGMENTERS`.
+- **A new kind of visit** (task-based drive, long drive): an entry in `modes.js`; the brief, bar, summary and log follow it.
+
+`check.mjs` fails if a moment names a detector, zone, aid, mode or rep splitter that doesn't exist, or if frames drift from
+`telemetry.js`. `window.ds` exposes the live state and every registry (`MODES`, `DETECTORS`, `ZONES`, `AIDS`, `FRAME`)
+for the console and for agents.
 
 Gearbox: **manual** (clutch, bite point, stalls, paddle shifts) or **automatic** (torque converter: creeps off the brake,
 shifts itself, never stalls — but still rolls back on the ramp if you're slow from brake to gas). Switch it on the lessons

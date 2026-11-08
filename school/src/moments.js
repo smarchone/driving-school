@@ -1,5 +1,13 @@
 // The lesson ladder. Each moment is ~30 seconds around one hard thing.
-// A moment is pure data + rules: road, start, pose, success criteria, live cues, expert.
+// A moment is pure data + rules that configure the generic engines; it holds no engine code itself.
+//   scenario   road, start, lead (vehicle ahead), zones (zones.js), timeLimit, end(f, sim)
+//   teaching   title, skill, why, goal, steps, pose, live, praise, demo, insight(S), tag
+//   judging    detect (ids in detectors.js), measure(S, f), cues, criteria, repChecks (stop-go reps)
+//   good run   drive (options for expert.js driver()), align ('time' | 'distance'), reference: false for none
+//   help       target { kind (aids.js), s, label, ... }
+//   visits     modes (modes.js; first = main button), practice { kind, mins, segment (practice.js) }
+//   gearbox    auto: { ...overrides }, `manual: true` on criteria/cues that only apply with a clutch
+// tools/check.mjs checks that every id named here exists in its registry.
 
 import { CAR } from './physics.js';
 import { LANE_CENTER } from './road.js';
@@ -246,7 +254,7 @@ const traffic = {
   align: 'time',
   timeLimit: 60,
   // Practice: one long street of stop-go traffic. Every stop-go of the auto is one rep.
-  practice: { kind: 'continuous', mins: 10 },
+  practice: { kind: 'continuous', mins: 10, segment: 'stop-go' },
   repChecks: [
     { id: 'stall', manual: true, label: 'No stall', test: R => R.stalls === 0, tip: 'Pause at the bite point until the car creeps, then lift the clutch slowly.' },
     { id: 'go', label: 'Moved off promptly', test: R => R.reaction <= 2.5, tip: 'Go as soon as the auto moves. Have the clutch at the bite point, ready.', autoTip: 'Ease off the brake as soon as the auto moves.' },
@@ -352,7 +360,9 @@ const LAP_LEN = LAP.reduce((a, g) => a + Math.max(1, Math.round(g.len / 0.5)) * 
 export const FREE = {
   id: 'free-drive',
   n: 6,
-  free: true,
+  tag: 'Free drive',
+  modes: ['free'],      // how it can be driven (modes.js); the first is the brief's main button
+  reference: false,     // no good run to compare against: no ghost, no demo
   continuous: true,
   title: 'Free drive',
   skill: 'Just drive',
@@ -380,7 +390,7 @@ export const FREE = {
 };
 
 export const MOMENTS = [movingOff, stopLine, bend, traffic, hill];
-for (const m of [...MOMENTS, FREE]) { m.transmission = 'manual'; m.expert = driver(m.drive); }
+for (const m of [...MOMENTS, FREE]) { m.transmission = 'manual'; m.expert = driver(m.drive); m.modes ??= ['practice', 'test']; }
 
 // The same moment for an automatic gearbox: clutch-only rules dropped, automatic wording merged in.
 export function forTransmission(m, trans) {
@@ -396,6 +406,7 @@ export function forTransmission(m, trans) {
       expert: driver(m.drive),
       _road: m._road,
       _autoVariant: undefined,
+      _practice: undefined,   // practiceOf() builds the automatic one from this variant
     };
   }
   return m._autoVariant;

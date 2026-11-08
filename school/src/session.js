@@ -2,27 +2,17 @@
 // It is the plug-in point for analysis (rule-based or LLM agents): read summary() for a compact brief,
 // call slice() for raw telemetry around a moment, or toJSON() for everything. Not persisted (yet).
 
+import { FRAME, SAVED } from './telemetry.js';
+
 export const SCHEMA_VERSION = 1;
 
-// Telemetry columns, with units. `T` is session time (continuous across runs); `t` is time within a run.
+// Telemetry columns, with units: the saved frame fields (telemetry.js) plus session time and run index.
+// `T` is session time (continuous across runs); `t` is time within a run.
 export const FIELDS = {
   T: 's, session time',
-  t: 's, run time',
+  t: FRAME.t.unit,
   run: 'index into runs[]',
-  s: 'm along the road centreline',
-  d: 'm from the road centreline, + right (our lane centre is -1.75)',
-  v: 'm/s, + forward',
-  a: 'm/s², smoothed over 0.1 s',
-  rpm: 'engine rpm, 0 = stalled',
-  gear: '0 = neutral, 1-5',
-  running: 'engine on (bool)',
-  e: 'clutch engagement 0 (open) .. 1 (locked); always 1 in automatic',
-  thr: 'gas pedal 0..1',
-  brk: 'brake pedal 0..1',
-  clu: 'clutch pedal 0 (up) .. 1 (down)',
-  steer: 'wheel -1 (full left) .. 1 (full right)',
-  gap: 'm bumper to bumper to the vehicle ahead, null if none',
-  leadV: 'm/s of the vehicle ahead, null if none',
+  ...Object.fromEntries(SAVED.filter(k => k !== 't').map(k => [k, FRAME[k].unit])),
 };
 const COLS = Object.keys(FIELDS);
 

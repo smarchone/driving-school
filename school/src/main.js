@@ -1,8 +1,15 @@
 // Driving School M0: brief -> (demo) -> get set -> drive with assist -> debrief playback -> retry.
-import { MOMENTS, FREE, forTransmission, lessons, practiceOf, practiceMins } from './moments.js';
+// This file is the app shell: screens, HUD, input and the frame loop. What differs between kinds of visit
+// (test, practice, free drive) lives in modes.js; the rules in detectors.js; lessons in moments.js.
+import { MOMENTS, FREE, forTransmission, lessons, practiceMins } from './moments.js';
 import { createSim, stepSim, shiftGear, runReference, roadOf, DT, FRAME_DT } from './sim.js';
 import { pointAt, LANE_CENTER } from './road.js';
-import { CAR } from './physics.js';
+import { MODES } from './modes.js';
+import { scoreRep } from './practice.js';
+import { readout, roadMark, chartMarks, AIDS } from './aids.js';
+import { DETECTORS } from './detectors.js';
+import { ZONES } from './zones.js';
+import { FRAME } from './telemetry.js';
 import { createInput } from './input.js';
 import { createRenderer, VARIANTS } from './render.js';
 import { createAudio } from './audio.js';
@@ -27,9 +34,11 @@ let progress = loadProgress();
 const LESSONS = () => lessons(settings.transmission);
 
 const refs = new Map();
+// Does the moment have a good run to compare against (ghost, ghost pedals, demo)?
+const hasRef = m => m.reference !== false;
 function refOf(m) {
-  // Free drive has no "good run" to compare against: just its first frame, so code that reads ref still works.
-  if (m.free) return { frames: [createSim(m).frames[0]], report: null, log: [] };
+  // No good run (free drive): just its first frame, so code that reads ref still works.
+  if (!hasRef(m)) return { frames: [createSim(m).frames[0]], report: null, log: [] };
   const key = m.id + (m.continuous ? '#practice' : '');
   if (!refs.has(key)) refs.set(key, runReference(m));
   return refs.get(key);
@@ -40,7 +49,7 @@ function refOf(m) {
 let session = null;
 const lessonId = m => (m.base || m).id.replace('@auto', '');
 function newSession(kind) {
-  const m = app.practice?.base || app.moment;
+  const m = app.run?.base || app.moment;
   session = createSession({
     lesson: lessonId(m), lessonTitle: m.title, gearbox: m.transmission, kind,
     practiceMins: kind === 'practice' ? practiceMins(m) : null,
@@ -62,10 +71,13 @@ function exportSession() {
 
 // Assist level in force: a practice session adapts it rep by rep; otherwise the learner's setting.
 const freeLesson = () => forTransmission(FREE, settings.transmission);
-const assist = () => (app.practice ? app.practice.assist : settings.assist);
+const assist = () => app.run?.assist ?? settings.assist;
+// The visit in progress ends with a summary (Finish), not a debrief.
+const endsInSummary = () => app.run?.mode.ends === 'summary';
 
+// app.mode is the screen; app.run is the visit in progress (see modes.js), null on the menus.
 const app = {
-  mode: 'setup', moment: null, sim: null, ref: null, clock: 0,
+  mode: 'setup', moment: null, sim: null, ref: null, clock: 0, run: null, lastMode: null, lastFrame: 0,
   acc: 0, cueTimer: 0, banner: 0, poseHeld: 0, countdown: null, snap: null,
   demoI: 0, demoLog: 0, play: 0, playing: false, speed: 1, playUntil: null, wiz: null,
 };
@@ -80,8 +92,8 @@ function hud(on, opts = {}) {
   $('#getset').hidden = !opts.getset;
   $('#banner').hidden = true;
   $('#stall').hidden = true;
-  $('#hud-hint').textContent = opts.hint ?? (app.practice ? 'Esc finish' : input.mode === 'wheel' ? '✕ retry · Esc exit' : 'R retry · Esc exit');
-  $('#pbar').hidden = !app.practice;
+  $('#hud-hint').textContent = opts.hint ?? (endsInSummary() ? 'Esc finish' : input.mode === 'wheel' ? '✕ retry · Esc exit' : 'R retry · Esc exit');
+  $('#pbar').hidden = !endsInSummary();
 }
 function nextUp() {
   return LESSONS().find(m => !progress[m.id]?.passed) || LESSONS()[LESSONS().length - 1];
@@ -306,7 +318,7 @@ $('#ladder-reset').onclick = () => { if (confirm('Clear all lesson progress?')) 
 // ---------------------------------------------------------------- brief
 function openBrief(m) {
   app.mode = 'brief';
-  app.practice = null;
+  app.run = null;
   app.moment = m;
   app.ref = refOf(m);
   view.setMoment(m, roadOf(m));
@@ -314,30 +326,27 @@ function openBrief(m) {
   app.orbitCar = app.ref.frames[0];
   show('brief');
   hud(false);
-  $('#brief-eyebrow').textContent = `Moment ${m.n} of ${LESSONS().length} · ${m.skill}${m.transmission === 'auto' ? ' · automatic' : ''}`;
+  const auto = m.transmission === 'auto';
+  $('#brief-eyebrow').textContent = m.tag ? `${m.tag} · ${auto ? 'automatic' : 'manual'}` : `Moment ${m.n} of ${LESSONS().length} · ${m.skill}${auto ? ' · automatic' : ''}`;
   $('#brief-title').textContent = m.title;
   $('#brief-why').textContent = m.why;
   $('#brief-goal').textContent = m.goal;
   $('#brief-steps').innerHTML = '';
   for (const s of m.steps) { const li = document.createElement('li'); li.textContent = s; $('#brief-steps').appendChild(li); }
+  // The main button starts the moment's first mode; "Test yourself" shows when it can also be tested.
+  const primary = MODES[m.modes[0]];
+  const pass = primary.briefPass(m);
+  $('#brief-pass-h').textContent = pass.title;
   $('#brief-pass').innerHTML = '';
-  for (const c of m.criteria) { const li = document.createElement('li'); li.textContent = c.label; $('#brief-pass').appendChild(li); }
-  $('#brief-practice').textContent = m.free ? 'Drive →' : `Practise · ${practiceMins(m)} min →`;
-  $('#brief-demo').hidden = !!m.free;
-  $('#brief-drive').hidden = !!m.free;
-  $('#brief-eyebrow').textContent = m.free ? `Free drive · ${m.transmission === 'auto' ? 'automatic' : 'manual'}` : $('#brief-eyebrow').textContent;
-  $('#brief-pass-h').textContent = m.free ? 'Your instructor' : 'A clean rep';
-  if (m.free) {
-    $('#brief-pass').innerHTML = '';
-    for (const t of ['Stays quiet unless something goes wrong', 'No score, no timer', 'Every drive is logged; download it at the end']) {
-      const li = document.createElement('li'); li.textContent = t; $('#brief-pass').appendChild(li);
-    }
-  }
+  for (const t of pass.items) { const li = document.createElement('li'); li.textContent = t; $('#brief-pass').appendChild(li); }
+  $('#brief-practice').textContent = primary.button(m);
+  $('#brief-demo').hidden = !hasRef(m);
+  $('#brief-drive').hidden = primary.id === 'test' || !m.modes.includes('test');
   audio.say(`${m.title}. ${m.goal}`);
 }
 $('#brief-demo').onclick = () => startDemo();
-$('#brief-drive').onclick = () => { app.practice = null; newSession('test'); startGetset(); };
-$('#brief-practice').onclick = () => (app.moment.free ? startFreeDrive() : startPractice());
+$('#brief-drive').onclick = () => startMode('test');
+$('#brief-practice').onclick = () => startMode(app.moment.modes[0]);
 $('#brief-back').onclick = () => openLadder();
 
 // ---------------------------------------------------------------- demo (pre-viz)
@@ -368,7 +377,7 @@ function tickDemo(dt) {
   }
   updateHud(f, { clu: f.clu, brk: f.brk, thr: f.thr }, true);
   audio.engine(f.rpm, f.thr);
-  app.viewState = { car: f, ghost: null, leadS: f.leadS, leadBraking: f.leadV < 0.3, cam: 'chase', assist: true, stopMark: stopMarkFor(f) };
+  app.viewState = { car: f, ghost: null, leadS: f.leadS, leadBraking: f.leadV < 0.3, cam: 'chase', assist: true, stopMark: roadMark(app.moment, f) };
   if (i >= ref.length - 1) {
     app.play += 0; // hold the last frame briefly
     app.demoEnd = (app.demoEnd || 0) + dt;
@@ -381,12 +390,16 @@ function startGetset(snap = null) {
   audio.unlock();
   audio.hush();
   const m = app.moment;
+  // Driving straight from the demo or a debrief, with no visit started: a test run.
+  app.run ??= MODES.test.start(m);
+  const R = app.run;
   app.ref = refOf(m);
   app.sim = createSim(m, snap);
   app.snap = snap;
-  if (!session || session.meta.lesson !== lessonId(m) || session.meta.gearbox !== m.transmission) newSession(app.practice ? 'practice' : 'test');
+  app.lastFrame = app.sim.frames.length - 1;
+  if (!session || session.meta.lesson !== lessonId(m) || session.meta.gearbox !== m.transmission) newSession(R.mode.id);
   if (!session.ref) session.ref = { note: 'the good run, same frame shape', frames: app.ref.frames };
-  session.beginRun(app.sim, snap ? 'retry-from-here' : app.practice ? (app.practice.continuous ? 'practice-continuous' : 'practice-rep') : 'test');
+  session.beginRun(app.sim, snap ? 'retry-from-here' : R.mode.runKind(R));
   app.mode = 'getset';
   app.poseHeld = 0;
   app.countdown = null;
@@ -394,19 +407,20 @@ function startGetset(snap = null) {
   show(null);
   hud(true, { getset: true });
   setHudText(snap ? 'Practice from here' : m.goal);
-  const P = app.practice;
+  const reps = R.mode.reps ? R.reps.length : 0;
   setAssistUI(assist() === 'full');
   // In practice the step list helps for the first couple of reps, then gets out of the way.
-  renderSteps(snap || (P && P.reps.length >= 2) ? null : m.live);
+  renderSteps(snap || reps >= 2 ? null : m.live);
   $('#getset-warn').hidden = true;
+  updateBar();  // fresh numbers at the start of each rep, not the last visit's
   const pose = !snap && m.pose;
-  $('#getset-title').textContent = snap ? 'Practice this bit' : P ? `Rep ${P.reps.length + 1}` : 'Get set';
+  $('#getset-title').textContent = snap ? 'Practice this bit' : R.mode.reps ? `Rep ${reps + 1}` : 'Get set';
   $('#pose').innerHTML = '';
   if (pose) {
     for (const p of pose) { const li = document.createElement('li'); li.textContent = p.label; li.dataset.p = p.pedal; $('#pose').appendChild(li); }
     $('#getset-hint').textContent = m.steps[0];
   } else {
-    app.countdown = P && P.reps.length ? 1.5 : 3;
+    app.countdown = reps ? 1.5 : 3;
     $('#getset-hint').textContent = snap ? 'Put your feet where the ghost markers show. Starting in…' : `Rolling start at ${kmh(app.sim.car.v)} km/h. ${m.steps[0]}`;
   }
 }
@@ -452,7 +466,7 @@ function beginDrive() {
   $('#getset').hidden = true;
   flash('Go', 'go', 0.7);
   const first = app.steps?.[0];
-  const quiet = app.practice && app.practice.reps.length > 0;
+  const quiet = app.run.mode.reps && app.run.reps.length > 0;
   if (!app.snap && !quiet) audio.say(first?.say || first?.text || 'Go.');
 }
 
@@ -498,30 +512,11 @@ function ghostPedalsFor(f) {
   const i = app.moment.align === 'distance' ? refIndexDist(f.s) : refIndexTime(f.t);
   return { clu: r[i].clu, brk: r[i].brk, thr: r[i].thr };
 }
+const ghostOn = () => assist() === 'full' && hasRef(app.moment);
 function driveView(f) {
-  const showGhost = assist() === 'full' && !app.moment.free;
+  const showGhost = ghostOn();
   const g = showGhost ? app.ref.frames[refIndexTime(f.t)] : null;
-  return { car: f, ghost: g, leadS: f.leadS, leadBraking: f.leadV !== null && f.leadV < 0.4, cam: settings.camera, assist: showGhost, stopMark: showGhost ? stopMarkFor(f) : null };
-}
-
-// Where will the car stop? Before braking: if you braked gently now. While braking: at your current braking.
-const COMFORT = 1.5; // m/s², the same gentle braking the BRAKE mark is placed for
-function stopMarkFor(f) {
-  const T = app.moment?.target;
-  if (!T || T.kind !== 'stop') return null;
-  const nose = f.s + CAR.length / 2;
-  const rem = T.s - nose;
-  if (f.v < 0.3 || rem < -3 || rem > 90) return null;
-  const decel = -f.a;
-  const braking = f.brk > 0.05 && decel > 0.4;
-  const at = nose + (f.v * f.v) / (2 * (braking ? decel : COMFORT));
-  if (!braking) {
-    const late = at >= T.s - 0.5;
-    return { s: at, color: late ? 0xf5b942 : 0x37d6c8, label: late ? 'Brake now!' : 'if you brake now' };
-  }
-  if (at > T.s + 0.3) return { s: at, color: 0xff6b6b, label: 'Over the line: brake more' };
-  if (T.s - at > 3) return { s: at, color: 0xf5b942, label: 'Short: ease off a little' };
-  return { s: at, color: 0x3ee08f, label: "You'll stop here ✓" };
+  return { car: f, ghost: g, leadS: f.leadS, leadBraking: f.leadV !== null && f.leadV < 0.4, cam: settings.camera, assist: showGhost, stopMark: showGhost ? roadMark(app.moment, f) : null };
 }
 
 function tickDrive(dt, inp) {
@@ -539,161 +534,77 @@ function tickDrive(dt, inp) {
     if (assist() !== 'off') { showCue(c.text, c.priority, 2.8); audio.say(c.text, c.priority); }
   }
   const f = sim.frames[sim.frames.length - 1];
-  session.sync(sim, app.practice && !app.practice.continuous ? app.practice.reps.length : null);
+  const R = app.run;
+  session.sync(sim, R.mode.reps && !R.continuous ? R.reps.length : null);
   if (sim.ended) session.endRun(sim.report);
   advanceSteps(f);
-  if (app.practice) {
-    updatePracticeBar();
-    if (app.practice.continuous) {
-      if (!app.practice.free) segmentReps(f);
-      if (app.clock >= app.practice.endsAt) return endPractice();
-    }
+  // The mode sees every new telemetry frame (continuous practice cuts reps out of them).
+  for (let i = app.lastFrame + 1; i < sim.frames.length; i++) {
+    const rep = R.mode.frame(R, sim, i, app.clock);
+    if (rep) repDone(rep);
   }
-  const ghostOn = assist() === 'full' && !app.moment.free;
-  updateHud(f, ghostOn ? ghostPedalsFor(f) : null, ghostOn);
+  app.lastFrame = sim.frames.length - 1;
+  if (endsInSummary()) {
+    updateBar();
+    if (R.continuous && R.mode.timeUp(R, app.clock)) return endRun();
+  }
+  const ghost = ghostOn();
+  updateHud(f, ghost ? ghostPedalsFor(f) : null, ghost);
   $('#stall').hidden = f.running;
   audio.engine(f.rpm, inp.throttle);
   app.viewState = driveView(f);
-  if (sim.ended && app.practice) {
-    if (app.practice.continuous) return endPractice();
-    repDone(repFromReport(sim.report));
+  if (!sim.ended) return;
+  const out = R.mode.runEnded(R, sim);
+  if (out.rep) repDone(out.rep);
+  if (out.then === 'end') return endRun();
+  if (out.then === 'next') {
     app.mode = 'repgap';
     app.gapT = 0;
     return;
   }
-  if (sim.ended) {
-    app.mode = 'ending';
-    app.endT = 0;
-    const r = sim.report;
-    flash(r.passed ? 'Passed' : (r.completed ? 'Not quite' : sim.ended.reason), r.passed ? 'pass' : 'fail', 1.6);
-  }
+  // 'debrief': a short pause on the result, then the replay.
+  app.mode = 'ending';
+  app.endT = 0;
+  const r = sim.report;
+  flash(r.passed ? 'Passed' : (r.completed ? 'Not quite' : sim.ended.reason), r.passed ? 'pass' : 'fail', 1.6);
 }
 
-// ---------------------------------------------------------------- practice
-// A practice session is many reps of one moment. No menus between reps: a one-line note, then go again.
-function startPractice() {
+// ---------------------------------------------------------------- visits (modes.js)
+// Start a visit to the current moment in a mode: test, practice or free drive.
+function startMode(id) {
   audio.unlock();
-  const base = app.moment;
-  const m = practiceOf(base);
-  app.practice = {
-    base, continuous: !!m.continuous, assist: settings.assist,
-    reps: [], streak: 0, fails: 0, bestStreak: 0, offStreak: 0, bestStreakNoAssist: 0,
-    startedAt: app.clock, endsAt: app.clock + practiceMins(base) * 60, phase: 'wait', stillT: 0,
-  };
-  app.moment = m;
-  newSession('practice');
+  const base = app.run?.base || app.moment;
+  app.run = MODES[id].start(base, { assist: settings.assist, clock: app.clock });
+  app.moment = app.run.moment;
+  newSession(id);
   startGetset();
 }
 
-function startFreeDrive() {
-  audio.unlock();
-  const m = app.moment;
-  app.practice = {
-    base: m, free: true, continuous: true, assist: settings.assist,
-    reps: [], streak: 0, fails: 0, bestStreak: 0, offStreak: 0, bestStreakNoAssist: 0,
-    startedAt: app.clock, endsAt: Infinity,
-  };
-  newSession('free');
-  startGetset();
-}
-
-function repFromReport(r) {
-  const checks = r.criteria.map(c => ({ id: c.id, label: c.label, ok: c.ok, tip: c.tip }));
-  if (!r.completed) checks.push({ id: 'finish', label: 'Finished the moment', ok: false, tip: r.tip });
-  return { clean: r.passed, checks, tip: r.tip, stats: r.stats };
-}
-
-// Continuous traffic: a rep runs from the auto moving off until you are stopped behind it again.
-function segmentReps(f) {
-  const P = app.practice, sim = app.sim, i = sim.frames.length - 1;
-  if (P.phase === 'wait') {
-    if (f.leadV > 0.3) { P.phase = 'rep'; P.from = i; P.t0 = f.t; }
-  } else if (P.phase === 'rep') {
-    if (sim.lead.v === 0) { P.phase = 'settle'; P.stillT = 0; }
-  } else if (P.phase === 'settle') {
-    P.stillT = f.v === 0 ? P.stillT + 1 / 60 : 0;
-    if (P.stillT > 0.6 || f.leadV > 0.3) {
-      closeRep(P.from, i, P.t0);
-      if (f.leadV > 0.3) { P.phase = 'rep'; P.from = i; P.t0 = f.t; } else P.phase = 'wait';
-    }
-  }
-}
-function closeRep(a, b, t0) {
-  const frames = app.sim.frames;
-  const R = { stalls: 0, minGap: Infinity, crash: false, maxAccel: 0, reaction: Infinity };
-  for (let k = a; k <= b; k++) {
-    const f = frames[k];
-    if (k > a && frames[k - 1].running && !f.running) R.stalls++;
-    if (f.gap !== null) { R.minGap = Math.min(R.minGap, f.gap); if (f.gap <= 0.05) R.crash = true; }
-    if (f.t - t0 > 0.3) R.maxAccel = Math.max(R.maxAccel, f.a);
-    if (R.reaction === Infinity && f.v > 0.3) R.reaction = f.t - t0;
-  }
-  const m = app.moment, auto = m.transmission === 'auto';
-  const checks = m.repChecks.filter(c => !(auto && c.manual))
-    .map(c => ({ id: c.id, label: c.label, ok: !!c.test(R), tip: auto && c.autoTip ? c.autoTip : c.tip }));
-  repDone({ clean: checks.every(c => c.ok), checks, R, range: [a, b] });
-}
-
-const ORDER = ['full', 'cues', 'off'];
+// A rep finished: score it, log it, and say the instructor's one line.
 function repDone(rep) {
-  const P = app.practice;
-  const prev = P.reps[P.reps.length - 1];
-  P.reps.push({ ...rep, assist: P.assist });
+  const R = app.run;
+  const line = scoreRep(R, rep);
   const run = session.runs[session.runs.length - 1];
   const [fs, fe] = rep.range ? [run.frameStart + rep.range[0], run.frameStart + rep.range[1] + 1] : [run.frameStart, run.frameEnd];
-  session.addRep({ ...rep, assist: P.assist }, fs, fe);
-  let line;
-  if (rep.clean) {
-    P.streak++; P.fails = 0;
-    P.bestStreak = Math.max(P.bestStreak, P.streak);
-    P.offStreak = P.assist === 'off' ? P.offStreak + 1 : 0;
-    P.bestStreakNoAssist = Math.max(P.bestStreakNoAssist, P.offStreak);
-    line = P.streak >= 3 ? `Clean again. ${P.streak} in a row.` : prev && !prev.clean ? 'Better! That one was clean.' : 'Clean. Again.';
-    // Three clean in a row: take some help away.
-    if (P.streak % 3 === 0 && P.assist !== 'off') {
-      P.assist = ORDER[ORDER.indexOf(P.assist) + 1];
-      line += P.assist === 'cues' ? ' Ghost off now, just my voice.' : ' Now on your own, no help.';
-    }
-  } else {
-    P.streak = 0; P.offStreak = 0; P.fails++;
-    // Coach the thing that keeps going wrong, not just the latest slip.
-    const recent = P.reps.slice(-4);
-    const misses = id => recent.filter(r => r.checks.some(c => c.id === id && !c.ok)).length;
-    const failed = rep.checks.filter(c => !c.ok).sort((x, y) => misses(y.id) - misses(x.id));
-    const focus = failed[0];
-    line = misses(focus.id) >= 2 || !rep.tip ? focus.tip : rep.tip;
-    if (P.fails >= 2 && P.assist !== 'full') {
-      P.assist = ORDER[ORDER.indexOf(P.assist) - 1];
-      P.fails = 0;
-      line += ' Help is back on.';
-    }
-  }
+  session.addRep({ ...rep, assist: R.reps[R.reps.length - 1].assist }, fs, fe);
   setAssistUI(assist() === 'full');
   syncChips();
   showCue(line, !rep.clean, 3.2);
   audio.say(line);
-  updatePracticeBar();
+  updateBar();
 }
 
-function updatePracticeBar() {
-  const P = app.practice;
-  $('#pbar').hidden = !P;
-  if (!P) return;
-  if (P.free) {
-    const el = app.clock - P.startedAt;
-    const fr = app.sim?.frames;
-    const km = fr && fr.length ? (fr[fr.length - 1].s - fr[0].s) / 1000 : 0;
-    $('#p-time').textContent = `${Math.floor(el / 60)}:${String(Math.floor(el % 60)).padStart(2, '0')}`;
-    $('#p-rep').textContent = `${km.toFixed(2)} km`;
-    $('#p-dots').innerHTML = '';
-    return;
-  }
-  const left = Math.max(0, P.endsAt - app.clock);
-  $('#p-time').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')} left`;
-  $('#p-rep').textContent = `${P.reps.length} reps · ${P.reps.filter(r => r.clean).length} clean`;
+function updateBar() {
+  const R = app.run, on = endsInSummary();
+  $('#pbar').hidden = !on;
+  if (!on) return;
+  const b = R.mode.bar(R, app.sim, app.clock);
+  $('#p-time').textContent = b.time;
+  $('#p-rep').textContent = b.count;
   const dots = $('#p-dots');
-  const shown = P.reps.slice(-16);
-  if (dots.childElementCount !== shown.length || P.reps.length > 16) {
+  if (!b.dots) { dots.innerHTML = ''; return; }
+  const shown = b.dots.slice(-16);
+  if (dots.childElementCount !== shown.length || b.dots.length > 16) {
     dots.innerHTML = shown.map(r => `<i class="${r.clean ? 'ok' : 'no'}"></i>`).join('');
   }
 }
@@ -703,95 +614,62 @@ function tickRepGap(dt) {
   const f = app.sim.frames[app.sim.frames.length - 1];
   audio.engine(f.rpm, 0);
   app.viewState = driveView(f);
-  updatePracticeBar();
+  updateBar();
   if (app.gapT > 2.2) {
-    if (app.clock >= app.practice.endsAt) endPractice();
+    if (app.run.mode.timeUp(app.run, app.clock)) endRun();
     else startGetset();
   }
 }
 
-function endPractice() {
-  const P = app.practice;
+// End the visit and show its summary (the mode works out what to say and records progress).
+function endRun() {
+  const R = app.run;
   audio.engine(0);
   audio.hush();
-  app.practice = null;
-  app.moment = P.base;
+  app.run = null;
+  app.moment = R.base;
+  app.lastMode = R.mode.id;
   if (session) session.meta.endedAt = new Date().toISOString();
   hud(false);
   progress = { ...progress };
-  if (P.free) return freeSummary(P);
-  recordPractice(progress, P.base.id, P);
+  showSummary(R.mode.finish(R, { sim: app.sim, clock: app.clock, progress, events: session ? session.events : [] }));
+}
+
+function showSummary(sum) {
   app.mode = 'summary';
   show('summary');
-  setSummaryLabels('reps', 'clean', 'best streak');
-  $('#sum-eyebrow').textContent = 'Practice done';
-  $('#sum-trend-h').textContent = 'How it changed';
-  $('#sum-dots').hidden = false;
-  $('#sum-again').textContent = 'Keep practising';
-  $('#sum-test').hidden = false;
-  const n = P.reps.length, mins = Math.max(1, Math.round((app.clock - P.startedAt) / 60));
-  $('#sum-title').textContent = `${mins} min of ${P.base.title.toLowerCase()}`;
-  $('#sum-reps').textContent = n;
-  $('#sum-clean').textContent = P.reps.filter(r => r.clean).length;
-  $('#sum-streak').textContent = P.bestStreak;
-  $('#sum-dots').innerHTML = P.reps.map(r => `<i class="${r.clean ? 'ok' : 'no'}" title="${r.clean ? 'clean' : r.checks.filter(c => !c.ok).map(c => c.label).join(', ')}"></i>`).join('') || '<span class="muted">No reps finished.</span>';
-  // How each habit changed from the first half of the session to the second.
-  const half = Math.floor(n / 2);
-  const ids = [...new Set(P.reps.flatMap(r => r.checks.map(c => c.id)))];
-  const missCount = (reps, id) => reps.filter(r => r.checks.some(c => c.id === id && !c.ok)).length;
-  const lines = ids.map(id => {
-    const label = P.reps.flatMap(r => r.checks).find(c => c.id === id).label;
-    const a = missCount(P.reps.slice(0, half), id), b = missCount(P.reps.slice(half), id);
-    return { label, a, b };
-  }).filter(x => x.a + x.b > 0);
-  $('#sum-trend').innerHTML = n < 4 ? '<li class="muted">Do a few more reps to see a trend.</li>'
-    : lines.length ? lines.map(x => `<li class="${x.b < x.a ? 'up' : x.b > x.a ? 'down' : ''}"><span>${x.label}</span><b>${x.a} miss${x.a === 1 ? '' : 'es'} → ${x.b}</b><small>first half → second half</small></li>`).join('')
-    : '<li class="up"><span>Everything</span><b>clean all session</b></li>';
-  const late = P.reps.slice(half);
-  const worst = lines.sort((x, y) => y.b - x.b)[0];
-  const tip = worst && worst.b > 0 ? P.reps.flatMap(r => r.checks).find(c => c.label === worst.label && !c.ok)?.tip : null;
-  $('#sum-next').textContent = tip || (late.length ? 'Clean at the end. Next time, start with assists off, or test yourself.' : 'Keep going: reps are how this gets easy.');
-  audio.say(`${n} reps, ${P.reps.filter(r => r.clean).length} clean. ${$('#sum-next').textContent}`);
-}
-function setSummaryLabels(a, b, c) {
+  $('#sum-eyebrow').textContent = sum.eyebrow;
+  $('#sum-title').textContent = sum.title;
   const spans = document.querySelectorAll('.stats span');
-  [a, b, c].forEach((t, i) => { spans[i].textContent = t; });
+  ['#sum-reps', '#sum-clean', '#sum-streak'].forEach((id, i) => { $(id).textContent = sum.stats[i][0]; spans[i].textContent = sum.stats[i][1]; });
+  const dots = $('#sum-dots');
+  dots.hidden = !sum.dots;
+  dots.innerHTML = '';
+  if (sum.dots && !sum.dots.length) { const e = document.createElement('span'); e.className = 'muted'; e.textContent = sum.dotsEmpty; dots.appendChild(e); }
+  for (const d of sum.dots || []) { const i = document.createElement('i'); i.className = d.ok ? 'ok' : 'no'; i.title = d.title; dots.appendChild(i); }
+  $('#sum-trend-h').textContent = sum.trendTitle;
+  const ul = $('#sum-trend');
+  ul.innerHTML = '';
+  for (const row of sum.trend) {
+    const li = document.createElement('li');
+    li.className = row.cls || '';
+    if (row.text) li.textContent = row.text;
+    else {
+      for (const [tag, text] of [['span', row.label], ['b', row.value], ['small', row.note]]) {
+        if (text === undefined) continue;
+        const el = document.createElement(tag); el.textContent = text; li.appendChild(el);
+      }
+    }
+    ul.appendChild(li);
+  }
+  $('#sum-next').textContent = sum.next;
+  $('#sum-again').textContent = sum.again;
+  $('#sum-test').hidden = !sum.test;
+  audio.say(sum.say);
 }
 
-function freeSummary(P) {
-  const fr = app.sim.frames;
-  const km = fr.length ? (fr[fr.length - 1].s - fr[0].s) / 1000 : 0;
-  const secs = Math.max(1, app.clock - P.startedAt);
-  const id = P.base.id;
-  const prev = progress[id]?.free || { km: 0, drives: 0 };
-  progress[id] = { ...(progress[id] || { attempts: 0, passed: false }), free: { km: prev.km + km, drives: prev.drives + 1 } };
-  try { localStorage.setItem('ds.progress.v1', JSON.stringify(progress)); } catch { /* storage unavailable */ }
-  app.mode = 'summary';
-  show('summary');
-  $('#sum-title').textContent = `Free drive · ${Math.max(1, Math.round(secs / 60))} min`;
-  setSummaryLabels('km', 'km/h average', 'findings');
-  $('#sum-eyebrow').textContent = 'Drive done';
-  $('#sum-trend-h').textContent = 'What came up';
-  $('#sum-reps').textContent = km.toFixed(1);
-  $('#sum-clean').textContent = Math.round(km / (secs / 3600));
-  const evs = session ? session.events : [];
-  $('#sum-streak').textContent = evs.length;
-  $('#sum-dots').hidden = true;
-  // What came up on the drive, most frequent first.
-  const by = {};
-  for (const e of evs) (by[e.title] = by[e.title] || { n: 0, tip: e.tip, major: e.severity === 'major' }).n++;
-  const rows = Object.entries(by).sort((a, b) => b[1].n - a[1].n);
-  $('#sum-trend').innerHTML = rows.length
-    ? rows.map(([t, x]) => `<li class="${x.major ? 'down' : ''}"><span>${t}</span><b>×${x.n}</b></li>`).join('')
-    : '<li class="up"><span>Nothing came up</span><b>clean drive</b></li>';
-  $('#sum-next').textContent = rows.length ? rows[0][1].tip : 'Clean drive. Next time, try it with assists off.';
-  $('#sum-again').textContent = 'Drive again';
-  $('#sum-test').hidden = true;
-  audio.say(`${km.toFixed(1)} kilometres. ${$('#sum-next').textContent}`);
-}
-
-$('#sum-again').onclick = () => (app.moment.free ? startFreeDrive() : startPractice());
-$('#sum-test').onclick = () => { app.practice = null; newSession('test'); startGetset(); };
+$('#sum-again').onclick = () => startMode(app.lastMode);
+$('#sum-test').onclick = () => startMode('test');
 $('#sum-export').onclick = () => exportSession();
 $('#db-export').onclick = () => exportSession();
 $('#sum-back').onclick = () => openLadder();
@@ -845,12 +723,7 @@ function openDebrief() {
   });
   $('#lg-bite').hidden = m.transmission === 'auto';
   $('#db-next').hidden = !(r.passed && m.n < LESSONS().length);
-  const T = m.target;
-  const s0 = sim.frames[0].s, nose = CAR.length / 2;
-  const marks = T && T.kind === 'stop' && m.align === 'distance' ? [
-    { x: T.s - T.brakeAt - nose - s0, label: 'brake here', color: '#f5b942' },
-    { x: T.s - nose - s0, label: 'line', color: '#e9edf2' },
-  ] : [];
+  const marks = chartMarks(m, sim.frames[0].s);
   chart.set({ frames: sim.frames, ref: app.ref.frames, align: m.align, events: r.events, playhead: 0, noClutch: m.transmission === 'auto', marks });
   app.speed = 1;
   $('#db-speed').textContent = '1×';
@@ -896,13 +769,13 @@ function tickDebrief(dt) {
   const f = frames[Math.round(app.play)];
   chart.draw(app.play);
   audio.engine(app.playing ? f.rpm : 0, f.thr);
-  app.viewState = { car: f, ghost: app.ref.frames[refIndexTime(f.t)], leadS: f.leadS, leadBraking: f.leadV !== null && f.leadV < 0.4, cam: 'chase', assist: true, shiftUp: 0.2, stopMark: stopMarkFor(f) };
+  app.viewState = { car: f, ghost: app.ref.frames[refIndexTime(f.t)], leadS: f.leadS, leadBraking: f.leadV !== null && f.leadV < 0.4, cam: 'chase', assist: true, shiftUp: 0.2, stopMark: roadMark(app.moment, f) };
 }
 
 // ---------------------------------------------------------------- HUD helpers
 function setHudText(goal) {
   const m = app.moment;
-  $('#hud-eyebrow').textContent = m.free ? 'Free drive · just drive' : `Moment ${m.n} · ${m.skill}`;
+  $('#hud-eyebrow').textContent = m.tag ? `${m.tag} · ${m.skill.toLowerCase()}` : `Moment ${m.n} · ${m.skill}`;
   $('#hud-title').textContent = m.title;
   $('#hud-goal').textContent = goal;
   syncChips();
@@ -916,7 +789,7 @@ const ASSIST_LABEL = { full: 'Assist: full', cues: 'Assist: voice only', off: 'A
 function syncChips() {
   $('#btn-assist').textContent = ASSIST_LABEL[assist()];
   $('#btn-assist').classList.toggle('on', assist() !== 'off');
-  $('#btn-exit').textContent = app.practice ? 'Finish' : 'Exit';
+  $('#btn-exit').textContent = endsInSummary() ? 'Finish' : 'Exit';
   $('#btn-cam').textContent = settings.camera === 'cockpit' ? 'View: driver' : 'View: chase';
   $('#btn-world').textContent = 'World: ' + (VARIANTS[settings.world] || VARIANTS.town).label.toLowerCase();
   $('#btn-voice').textContent = settings.voice ? 'Voice on' : 'Voice off';
@@ -926,7 +799,7 @@ function syncChips() {
 }
 function cycleAssist() {
   const next = { full: 'cues', cues: 'off', off: 'full' }[assist()];
-  if (app.practice) app.practice.assist = next;
+  if (app.run && app.run.assist != null) app.run.assist = next;
   else { settings.assist = next; saveSettings(settings); }
   setAssistUI(next === 'full');
   syncChips();
@@ -960,7 +833,7 @@ $('#btn-voice').onclick = toggleVoice;
 $('#btn-sound').onclick = toggleSound;
 $('#btn-exit').onclick = () => exitToBrief();
 function exitToBrief() {
-  if (app.practice) return endPractice();
+  if (endsInSummary()) return endRun();
   audio.engine(0); audio.hush();
   app.moment ? openBrief(app.moment) : openLadder();
 }
@@ -994,14 +867,13 @@ function updateHud(f, ghost, assistOn) {
   $('#gear').textContent = auto ? `D${f.gear}` : f.gear === 0 ? 'N' : String(f.gear);
   $('#gear').style.borderColor = gearFlash > 0 ? 'var(--ghost)' : '';
   $('#gear-hint').textContent = auto ? 'automatic' : input.mode === 'wheel' ? 'paddles' : 'E / Q';
-  const T = app.moment?.target;
-  const toGo = T ? T.s - (T.kind === 'stop' ? f.s + CAR.length / 2 : f.s) : null;
+  const r = readout(app.moment, f);
   const dist = $('#dist');
-  dist.hidden = !(T && toGo > -1 && toGo < 150);
-  if (!dist.hidden) {
-    $('#dist-v').textContent = Math.max(0, Math.round(toGo));
-    $('#dist-l').textContent = `m to ${T.label.toLowerCase()}`;
-    dist.classList.toggle('soon', T.brakeAt !== undefined && toGo <= T.brakeAt + 2 && toGo > 0);
+  dist.hidden = !r;
+  if (r) {
+    $('#dist-v').textContent = r.m;
+    $('#dist-l').textContent = r.label;
+    dist.classList.toggle('soon', r.soon);
   }
   const rpm = f.running ? f.rpm : 0;
   const fill = $('#rpm-fill');
@@ -1045,10 +917,10 @@ function handleEvents(ev) {
   }
   switch (app.mode) {
     case 'ladder': if (ev.ok) openBrief(nextUp()); break;
-    case 'brief': if (ev.ok) (app.moment.free ? startFreeDrive() : startPractice()); break;
-    case 'summary': if (ev.ok) (app.moment.free ? startFreeDrive() : startPractice()); break;
+    case 'brief': if (ev.ok) startMode(app.moment.modes[0]); break;
+    case 'summary': if (ev.ok) startMode(app.lastMode); break;
     case 'demo': if (ev.ok) { audio.engine(0); startGetset(); } break;
-    case 'drive': case 'getset': if (ev.retry && !app.practice?.continuous) startGetset(app.snap); break;
+    case 'drive': case 'getset': if (ev.retry && !app.run?.continuous) startGetset(app.snap); break;
     case 'debrief': {
       if (ev.ok || ev.retry) { startGetset(); break; }
       const evs = app.sim.report.events;
@@ -1096,5 +968,8 @@ onResize();
 if (input.custom) openLadder(); else openSetup();
 requestAnimationFrame(loop);
 
-// Debug handle for poking at state from the console.
-window.ds = { app, MOMENTS: MOMENTS, settings, input, DT, session: null };
+// Handle for the console and for agents: live state, plus the registries that describe what the app can do.
+window.ds = {
+  app, settings, input, DT, session: null,
+  MOMENTS, FREE, MODES, DETECTORS, ZONES, AIDS, FRAME,
+};

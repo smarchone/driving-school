@@ -37,15 +37,18 @@ export function createSim(moment, snap = null) {
   return sim;
 }
 
+// One telemetry frame. The fields are listed, with units, in telemetry.js.
 function record(sim, inp) {
   const c = sim.car, p = sim.proj, L = sim.lead;
+  // Acceleration over the last 0.1 s (6 frames).
+  const fr = sim.frames, back = fr.length >= 6 ? fr[fr.length - 6] : null;
   const f = {
     t: sim.t, s: p.s, d: p.d, x: c.x, z: c.z, h: c.h, y: p.y, grade: p.grade,
     v: c.v, rpm: c.running ? c.omegaE * RPM : 0, running: c.running, gear: c.gear, e: c.e, tc: c.tc,
     thr: inp.throttle, brk: inp.brake, clu: inp.clutch, steer: inp.steer,
     leadS: L ? L.s : null, leadV: L ? L.v : null,
     gap: L ? L.s - p.s - (CAR.length + LEAD_LEN) / 2 : null,
-    a: 0,
+    a: back ? (c.v - back.v) / (sim.t - back.t) : 0,
     // Long practice sessions keep frames light (no restorable snapshot per frame).
     snap: sim.moment.continuous ? null : { car: { ...c }, lead: L ? { ...L } : null, t: sim.t, input: { ...inp }, i: p.i },
   };

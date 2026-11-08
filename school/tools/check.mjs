@@ -79,5 +79,30 @@ if (st.ins.stats.stalls) failed++;
   if (!ok) failed++;
 }
 
+// Registries: every id a moment names must exist, and frames must match the telemetry schema.
+{
+  const { FREE, forTransmission, practiceOf } = await import('../src/moments.js');
+  const { DETECTOR } = await import('../src/detectors.js');
+  const { ZONES } = await import('../src/zones.js');
+  const { AIDS } = await import('../src/aids.js');
+  const { MODES } = await import('../src/modes.js');
+  const { SEGMENTERS } = await import('../src/practice.js');
+  const { FRAME } = await import('../src/telemetry.js');
+  const bad = [];
+  for (const m of [...lessons('manual'), ...lessons('auto'), forTransmission(FREE, 'manual'), forTransmission(FREE, 'auto')]) {
+    for (const id of m.detect || []) if (!DETECTOR[id]) bad.push(`${m.id}: detector "${id}"`);
+    for (const z of m.zones || []) if (!ZONES[z.type]) bad.push(`${m.id}: zone "${z.type}"`);
+    if (m.target && !AIDS[m.target.kind]) bad.push(`${m.id}: target kind "${m.target.kind}"`);
+    for (const id of m.modes || []) if (!MODES[id]) bad.push(`${m.id}: mode "${id}"`);
+    if (m.practice?.segment && !SEGMENTERS[m.practice.segment]) bad.push(`${m.id}: segment "${m.practice.segment}"`);
+    if (practiceOf(m).transmission !== m.transmission) bad.push(`${m.id}: practice version has the wrong gearbox`);
+  }
+  const { snap, ...f } = createSim(MOMENTS[0]).frames[0];
+  const keys = Object.keys(f).sort().join(), schema = Object.keys(FRAME).sort().join();
+  if (keys !== schema) bad.push(`frame fields [${keys}] differ from telemetry.js [${schema}]`);
+  console.log(bad.length ? `FAIL  registries:\n        ${bad.join('\n        ')}` : 'PASS  registries -> every detector, zone, aid, mode and segmenter named by a moment exists; frames match telemetry.js');
+  if (bad.length) failed++;
+}
+
 console.log(failed ? `\n${failed} failing` : '\nall good');
 process.exit(failed ? 1 : 0);
