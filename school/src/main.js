@@ -259,6 +259,16 @@ function openLadder() {
   $('#ladder-gearbox').textContent = settings.transmission === 'auto' ? 'Gearbox: automatic' : 'Gearbox: manual';
   const ol = $('#ladder');
   ol.innerHTML = '';
+  // Free drive: always open, outside the ladder, listed first.
+  const fm = freeLesson();
+  const fp = progress[fm.id]?.free;
+  const fli = document.createElement('li');
+  fli.className = 'rung free';
+  fli.innerHTML = `<div class="num">∞</div><div><div class="t"></div><div class="s"></div></div><div class="st">${fp ? `${(fp.km || 0).toFixed(1)} km driven` : 'Open'}</div>`;
+  fli.querySelector('.t').textContent = fm.title;
+  fli.querySelector('.s').textContent = 'Just drive the town loop, at your own pace';
+  fli.onclick = () => { audio.unlock(); openBrief(fm); };
+  ol.appendChild(fli);
   LESSONS().forEach((m, i) => {
     const p = progress[m.id];
     const prevPassed = i === 0 || progress[LESSONS()[i - 1].id]?.passed;
@@ -272,16 +282,6 @@ function openLadder() {
     li.onclick = () => { audio.unlock(); openBrief(m); };
     ol.appendChild(li);
   });
-  // Free drive: always open, outside the ladder.
-  const fm = freeLesson();
-  const fp = progress[fm.id]?.free;
-  const li = document.createElement('li');
-  li.className = 'rung free';
-  li.innerHTML = `<div class="num">∞</div><div><div class="t"></div><div class="s"></div></div><div class="st">${fp ? `${(fp.km || 0).toFixed(1)} km driven` : 'Open'}</div>`;
-  li.querySelector('.t').textContent = fm.title;
-  li.querySelector('.s').textContent = 'Just drive the town loop, at your own pace';
-  li.onclick = () => { audio.unlock(); openBrief(fm); };
-  ol.appendChild(li);
 }
 $('#ladder-wheel').onclick = () => openSetup();
 // Instructor voice picker: the best-sounding voice is chosen by default; the learner can override it.

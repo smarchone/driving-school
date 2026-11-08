@@ -255,5 +255,5 @@ select.chip option { background: #1b2027; }
 .trend li small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
 .trend li.up b { color: var(--pass); } .trend li.down b { color: var(--fail); }
 
-.rung.free { margin-top: 10px; border-style: dashed; }
+.rung.free { margin-bottom: 10px; border-style: dashed; }
 .rung.free .num { border-color: var(--ghost); color: var(--ghost); font-size: 20px; }
