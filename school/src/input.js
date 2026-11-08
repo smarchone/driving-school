@@ -11,7 +11,12 @@ export const G29_DEFAULT = {
   up: 4,
   down: 5,
   ok: [0, 1, 2, 3],
+  indL: 7,   // L2
+  indR: 6,   // R2
+  hat: 9,    // D-pad, read as one axis: ◀ ▶ also work the indicators
 };
+// Chrome's hat-axis values for the D-pad directions (neutral is about 1.29).
+const HAT = { left: 0.714, right: -0.428 };
 
 function load() {
   try { const m = JSON.parse(localStorage.getItem(KEY)); if (m && m.steer) return m; } catch { /* storage unavailable */ }
@@ -35,6 +40,7 @@ export function createInput() {
   // 1 = as configured, -1 = this browser reports it the other way round.
   const orient = { clu: 1, thr: 1, brk: 1 };
   let prevButtons = [];
+  let prevHat = null;
   const stored = load();
   const self = {
     mapping: stored || G29_DEFAULT,
@@ -81,7 +87,7 @@ export function createInput() {
     const pad = self.getPad();
     self.pad = pad;
     const m = self.mapping;
-    const ev = { shift: 0, ok: false, retry: false, back: false, prev: false, next: false, any: false };
+    const ev = { shift: 0, ind: 0, ok: false, retry: false, back: false, prev: false, next: false, any: false };
     const once = c => pressedOnce.has(c);
     if (pressedOnce.size) ev.any = true;
     if (once('Enter')) ev.ok = true;
@@ -91,6 +97,8 @@ export function createInput() {
     if (once('KeyQ') || once('PageDown')) ev.shift = -1;
     if (once('BracketLeft')) ev.prev = true;
     if (once('BracketRight')) ev.next = true;
+    if (once('Comma')) ev.ind = -1;
+    if (once('Period')) ev.ind = 1;
 
     let out;
     const wheelActive = pad && (self.mode === 'wheel' || pad.buttons.some(b => b.pressed));
@@ -101,6 +109,13 @@ export function createInput() {
       if (edge(m.up)) { ev.shift = 1; ev.next = true; }
       if (edge(m.down)) { ev.shift = -1; ev.prev = true; }
       if ((m.ok || []).some(edge)) { ev.ok = true; ev.retry = true; }
+      // Indicators: L2 / R2, or the D-pad. Mappings saved before indicators existed use the G29 defaults.
+      if (edge(m.indL ?? G29_DEFAULT.indL)) ev.ind = -1;
+      if (edge(m.indR ?? G29_DEFAULT.indR)) ev.ind = 1;
+      const hv = pad.axes[m.hat ?? G29_DEFAULT.hat];
+      const hat = hv === undefined ? null : Math.abs(hv - HAT.left) < 0.1 ? -1 : Math.abs(hv - HAT.right) < 0.1 ? 1 : 0;
+      if (hat && hat !== prevHat) ev.ind = hat;
+      prevHat = hat;
       if (btn.some((b, i) => b && !prevButtons[i])) ev.any = true;
       prevButtons = btn;
       const raw = pad.axes[m.steer.axis] ?? 0;

@@ -12,7 +12,7 @@ const SHOULDER = 2;
 // Asset variants: how the world around the road looks. Physics and lessons are the same in every variant.
 //   town  - Indian street: sky, ground, kerbs, buildings, trees, flyover walls
 //   space - only the road, floating in pitch black
-//   the rest - only the road, floating in a procedural world from src/worlds.js (picked in lab/worlds.html)
+//   the rest - only the road, floating in a procedural world from src/worlds.js
 const VOID = { background: 0x000000, fog: null, ground: false, scenery: false };
 export const VARIANTS = {
   town: { label: 'Town', background: 0xcfe0ea, fog: [70, 340], ground: true, scenery: true },

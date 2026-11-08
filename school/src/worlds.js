@@ -1,4 +1,4 @@
-// Worlds: what surrounds the road in the non-town variants (picked in school/lab/worlds.html).
+// Worlds: what surrounds the road in the non-town variants.
 // Each world is procedural (no downloads) and sized to hold 60 fps at 4K on an M1: the cheap ones are drawn live per
 // pixel; the expensive ones are drawn into a cube map once (ink) or one cube face per frame (aurora).
 //

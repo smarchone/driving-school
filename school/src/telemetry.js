@@ -19,6 +19,7 @@ export const FRAME = {
   brk: { unit: 'brake pedal 0..1', save: true },
   clu: { unit: 'clutch pedal 0 (up) .. 1 (down)', save: true },
   steer: { unit: 'wheel -1 (full left) .. 1 (full right)', save: true },
+  ind: { unit: 'indicator: -1 left, 0 off, 1 right', save: true },
   gap: { unit: 'm bumper to bumper to the vehicle ahead, null if none', save: true },
   leadV: { unit: 'm/s of the vehicle ahead, null if none', save: true },
   // live only

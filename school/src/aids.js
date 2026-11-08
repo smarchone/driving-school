@@ -5,6 +5,7 @@
 // An aid: { about, toGo(f, T) -> m left, mark?(f, T) -> { s, color, label } | null, chartMarks?(T, s0, moment) -> [...] }
 
 import { CAR } from './physics.js';
+import { LANE } from './road.js';
 
 const NOSE = CAR.length / 2;
 const COMFORT = 1.5; // m/s², the same gentle braking the BRAKE mark is placed for
@@ -55,3 +56,26 @@ export function readout(m, f) {
 }
 export const roadMark = (m, f) => { const T = m?.target; return T && AIDS[T.kind]?.mark ? AIDS[T.kind].mark(f, T) : null; };
 export const chartMarks = (m, s0) => { const T = m.target; return T && AIDS[T.kind]?.chartMarks ? AIDS[T.kind].chartMarks(T, s0, m) : []; };
+
+// The speed limit in force: the last speed sign passed. On a looping road the signs repeat every lap.
+export function speedLimit(m, f) {
+  const signs = (m?.zones || []).filter(z => z.type === 'speedSign').sort((a, b) => a.s - b.s);
+  if (!signs.length) return null;
+  const s = m.lapLength ? ((f.s % m.lapLength) + m.lapLength) % m.lapLength : f.s;
+  const passed = signs.filter(z => z.s <= s);
+  if (passed.length) return passed[passed.length - 1].limit;
+  return m.lapLength && f.s >= m.lapLength ? signs[signs.length - 1].limit : null;
+}
+
+// Where the car sits across the road: the road is drawn from the left kerb (0) to the right kerb (1),
+// the centre line in the middle. state: 'ok', 'near' (within 30 cm of the kerb or the centre line) or 'over'.
+export function laneGauge(f) {
+  const half = CAR.width / 2;
+  const toKerb = f.d - half + LANE;     // left side of the car to the left kerb
+  const toCentre = -(f.d + half);       // right side of the car to the centre line
+  const state = toCentre < 0 || toKerb < 0 ? 'over' : toCentre < 0.3 || toKerb < 0.3 ? 'near' : 'ok';
+  const text = toCentre < 0 ? `over the centre line by ${(-toCentre).toFixed(1)} m`
+    : toKerb < 0 ? `off the kerb by ${(-toKerb).toFixed(1)} m`
+    : `kerb ${toKerb.toFixed(1)} m · centre line ${toCentre.toFixed(1)} m`;
+  return { left: (f.d - half + LANE) / (2 * LANE), width: CAR.width / (2 * LANE), state, text };
+}

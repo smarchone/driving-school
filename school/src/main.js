@@ -2,11 +2,11 @@
 // This file is the app shell: screens, HUD, input and the frame loop. What differs between kinds of visit
 // (test, practice, free drive) lives in modes.js; the rules in detectors.js; lessons in moments.js.
 import { MOMENTS, FREE, forTransmission, lessons, practiceMins } from './moments.js';
-import { createSim, stepSim, shiftGear, runReference, roadOf, DT, FRAME_DT } from './sim.js';
+import { createSim, stepSim, shiftGear, signal, runReference, roadOf, DT, FRAME_DT } from './sim.js';
 import { pointAt, LANE_CENTER } from './road.js';
 import { MODES } from './modes.js';
 import { scoreRep } from './practice.js';
-import { readout, roadMark, chartMarks, AIDS } from './aids.js';
+import { readout, roadMark, chartMarks, speedLimit, laneGauge, AIDS } from './aids.js';
 import { DETECTORS } from './detectors.js';
 import { ZONES } from './zones.js';
 import { FRAME } from './telemetry.js';
@@ -455,7 +455,9 @@ function tickGetset(dt, inp) {
   }
   const si = app.snap?.input;
   const ghostPed = si ? { clu: si.clutch, brk: si.brake, thr: si.throttle } : null;
-  updateHud({ ...f, thr: inp.throttle, brk: inp.brake, clu: inp.clutch, steer: inp.steer }, ghostPed, assist() === 'full' || !!app.snap);
+  // Signalling before pulling away is allowed (and good practice).
+  if (inp.ev.ind) signal(app.sim, inp.ev.ind);
+  updateHud({ ...f, thr: inp.throttle, brk: inp.brake, clu: inp.clutch, steer: inp.steer, ind: app.sim.ind }, ghostPed, assist() === 'full' || !!app.snap);
   audio.engine(f.rpm, inp.throttle);
   app.viewState = driveView(f);
 }
@@ -525,6 +527,7 @@ function tickDrive(dt, inp) {
     sim.input = { ...sim.input, clutch: inp.clutch };
     if (shiftGear(sim, inp.ev.shift)) flashGear();
   }
+  if (inp.ev.ind) signal(sim, inp.ev.ind);
   app.acc += dt;
   let n = 0;
   const controls = { steer: inp.steer, throttle: inp.throttle, brake: inp.brake, clutch: inp.clutch };
@@ -861,6 +864,7 @@ const pedEls = {};
 document.querySelectorAll('.pedal').forEach(el => {
   pedEls[el.dataset.p] = { fill: el.querySelector('.fill'), ghost: el.querySelector('.gmark') };
 });
+let hudBlink = false;
 function updateHud(f, ghost, assistOn) {
   $('#speed').textContent = kmh(f.v);
   const auto = app.moment?.transmission === 'auto';
@@ -879,7 +883,25 @@ function updateHud(f, ghost, assistOn) {
   const fill = $('#rpm-fill');
   fill.style.width = `${clamp(rpm / 6500, 0, 1) * 100}%`;
   fill.className = 'rpm-fill' + (!f.running ? ' off' : rpm < 700 ? ' low' : rpm > 3800 ? ' high' : '');
-  $('#rpm').textContent = f.running ? Math.round(rpm / 10) * 10 : 'off';
+  $('#rpm').textContent = Math.round(rpm / 10) * 10;
+  $('#engine').textContent = f.running ? 'engine on' : 'engine off';
+  // Indicators blink about 80 times a minute, with the relay's tick.
+  const blink = !!f.ind && Math.floor(app.clock / 0.38) % 2 === 0;
+  $('#ind-l').classList.toggle('on', f.ind < 0 && blink);
+  $('#ind-r').classList.toggle('on', f.ind > 0 && blink);
+  if (blink !== hudBlink) { hudBlink = blink; if (f.ind && app.mode !== 'debrief') audio.tick(blink); }
+  // Speed limit in force (the last sign passed); the speed turns red above it.
+  const limit = speedLimit(app.moment, f);
+  $('#limit').hidden = !limit;
+  if (limit) $('#limit').textContent = limit;
+  $('#speed-wrap').classList.toggle('over', !!limit && kmh(f.v) > limit);
+  // Lane gauge: the car across the road, kerb to kerb.
+  const L = laneGauge(f);
+  const car = $('#lane-car');
+  car.style.left = `${clamp(L.left, -0.1, 1.1) * 100}%`;
+  car.style.width = `${L.width * 100}%`;
+  car.className = 'lane-car' + (L.state === 'ok' ? '' : ' ' + L.state);
+  $('#lane-txt').textContent = L.text;
   // Wheel angle (900° lock): the dot spans ±90°, the label gives the exact angle.
   const deg = (f.steer || 0) * 450;
   const dot = $('#steer-dot');

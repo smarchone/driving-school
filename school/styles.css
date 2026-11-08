@@ -125,48 +125,71 @@ select.chip option { background: #1b2027; }
 .pose li.ok::before { background: var(--pass); border-color: var(--pass); }
 .getset-hint { color: var(--muted); font-size: 15px; line-height: 1.45; }
 
-/* The dashboard sits bottom-centre, gauge and pedals side by side, so one glance down covers both. */
-.hud-bottom { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: calc(100% - 32px); display: grid; grid-template-columns: auto auto; align-items: end; gap: 6px 12px; }
-.hud-bottom .hud-hint { grid-column: 1 / -1; grid-row: 2; padding-bottom: 0; }
-.gauge { display: flex; align-items: center; gap: 18px; padding: 14px 18px; border-radius: 16px; background: var(--panel); backdrop-filter: blur(8px); border: 1px solid var(--line); }
-.speed { font-size: 46px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+/* The dashboard sits bottom-centre: the lane gauge, then one strip with everything a glance down needs. */
+.hud-bottom { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: calc(100% - 32px); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.dash, .lanebox { border-radius: 16px; background: var(--panel); backdrop-filter: blur(8px); border: 1px solid var(--line); }
+.dash { display: flex; align-items: center; gap: 16px; padding: 10px 16px; max-width: 100%; flex-wrap: wrap; justify-content: center; }
+
+/* Indicators blink green with the relay tick. */
+.ind { font-size: 26px; line-height: 1; color: rgba(255,255,255,0.14); transition: color .05s; }
+.ind.on { color: var(--gas); text-shadow: 0 0 12px rgba(62,224,143,0.7); }
+/* Speed limit: a round sign, as on the kerb. */
+.limit { width: 44px; height: 44px; border-radius: 50%; border: 6px solid #d32f2f; background: #fff; color: #111; font-weight: 800; font-size: 16px; display: grid; place-items: center; flex: none; }
+
+.speed { font-size: 42px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1; min-width: 3ch; text-align: right; }
 .speed small { font-size: 13px; font-weight: 600; color: var(--muted); margin-left: 4px; letter-spacing: 0; }
+.speed.over { color: var(--brake); }
 .gear-wrap { text-align: center; }
-.gear { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; font-size: 26px; font-weight: 800; background: rgba(255,255,255,0.07); border: 1px solid var(--line); }
+.gear { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 26px; font-weight: 800; background: rgba(255,255,255,0.07); border: 1px solid var(--line); }
 .gear-hint { font-size: 10px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .06em; }
-.rpm { width: 150px; }
+.rpm { width: 160px; }
+.rpm-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rpm-bar { height: 10px; border-radius: 5px; background: rgba(255,255,255,0.08); position: relative; overflow: hidden; }
 .rpm-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--speed); border-radius: 5px; transition: background .2s; }
 .rpm-fill.low { background: var(--clutch); } .rpm-fill.high { background: var(--brake); } .rpm-fill.off { background: transparent; }
+.rpm-red { position: absolute; right: 0; top: 0; bottom: 0; width: 14%; background: rgba(255,107,107,0.3); }
 .rpm-idle { position: absolute; top: 0; bottom: 0; left: 13%; width: 2px; background: rgba(255,255,255,0.35); }
-.rpm-label { font-size: 12px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+/* Lane gauge: the whole road, kerb to kerb; the green block is your car. */
+.lanebox { width: 340px; max-width: 100%; padding: 8px 12px 10px; display: grid; gap: 6px; }
+.lane { position: relative; height: 24px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,0.08); }
+.lane-mine { position: absolute; left: 0; width: 50%; top: 0; bottom: 0; background: rgba(62,224,143,0.12); }
+.lane-opp { position: absolute; right: 0; width: 50%; top: 0; bottom: 0; background: rgba(255,107,107,0.12); }
+.lane-kerb { position: absolute; top: 0; bottom: 0; width: 4px; background: #d8dde3; }
+.lane-kerb.l { left: 0; } .lane-kerb.r { right: 0; }
+.lane-cl { position: absolute; left: calc(50% - 1.5px); width: 3px; top: 0; bottom: 0; background: repeating-linear-gradient(#fff 0 5px, transparent 5px 9px); }
+.lane-car { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; background: var(--gas); transition: background .15s; }
+.lane-car.near { background: var(--clutch); } .lane-car.over { background: var(--brake); }
+.lane-txt { font-size: 12px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
 /* Steering: the dot shows wheel angle within ±90°, so a small off-centre rest is easy to see. */
-.steerbar { width: 150px; }
-.steer-track { position: relative; height: 10px; border-radius: 5px; background: rgba(255,255,255,0.08); }
+.steerbar { width: 100%; }
+.steer-track { position: relative; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); }
 .steer-mid { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: rgba(255,255,255,0.45); }
 .steer-dot { position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--ghost); box-shadow: 0 0 8px var(--ghost); }
 .steer-dot.off { background: var(--clutch); box-shadow: 0 0 8px var(--clutch); }
 .steer-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
 .steer-zero { pointer-events: auto; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: inherit; font: inherit; font-size: 11px; border-radius: 999px; padding: 1px 8px; cursor: pointer; }
 .steer-zero:hover { color: var(--text, #e9edf2); }
-.hud-hint { color: rgba(233,237,242,0.55); font-size: 12px; padding-bottom: 8px; text-align: center; }
+.hud-hint { color: rgba(233,237,242,0.55); font-size: 12px; text-align: center; }
 
-.pedals { display: flex; gap: 12px; padding: 14px 16px 10px; border-radius: 16px; background: var(--panel); backdrop-filter: blur(8px); border: 1px solid var(--line); }
-.pedal { display: grid; justify-items: center; gap: 6px; }
-.pedal label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-.track { position: relative; width: 34px; height: 130px; border-radius: 9px; background: rgba(255,255,255,0.07); overflow: hidden; }
-.fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; border-radius: 9px 9px 0 0; }
+/* Pedals: compact bars inside the dash; with full assist, ghost markers show the good run and the bite zone. */
+.pedals { display: flex; gap: 8px; }
+.pedal { display: grid; justify-items: center; gap: 4px; }
+.pedal label { font-size: 10px; color: var(--muted); font-weight: 700; }
+.track { position: relative; width: 16px; height: 58px; border-radius: 5px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; border-radius: 5px 5px 0 0; }
 .pedal[data-p=clu] .fill { background: var(--clutch); }
 .pedal[data-p=brk] .fill { background: var(--brake); }
 .pedal[data-p=thr] .fill { background: var(--gas); }
-.gmark { position: absolute; left: -2px; right: -2px; height: 4px; margin-bottom: -2px; bottom: 0; background: var(--ghost); box-shadow: 0 0 10px var(--ghost); display: none; }
+.gmark { position: absolute; left: -2px; right: -2px; height: 3px; margin-bottom: -1.5px; bottom: 0; background: var(--ghost); box-shadow: 0 0 8px var(--ghost); display: none; }
 .pedals.assist .gmark { display: block; }
 .bite { position: absolute; left: 0; right: 0; bottom: 55%; height: 10%; background: repeating-linear-gradient(45deg, rgba(245,185,66,0.28) 0 4px, rgba(245,185,66,0.1) 4px 8px); border-top: 1px dashed rgba(245,185,66,0.7); border-bottom: 1px dashed rgba(245,185,66,0.7); display: none; }
 .pedals.assist .bite { display: block; }
 
 @media (max-width: 720px) {
-  .gauge { gap: 10px; padding: 10px 12px; } .speed { font-size: 32px; } .rpm { width: 90px; }
-  .track { height: 90px; width: 26px; } .hud-hint { display: none; } .steerbar { width: 90px; } .steer-zero { display: none; }
+  .dash { gap: 10px; padding: 8px 10px; } .speed { font-size: 30px; } .rpm { width: 96px; }
+  .limit { width: 36px; height: 36px; font-size: 13px; border-width: 5px; } .ind { font-size: 20px; }
+  .lanebox { width: 260px; } .hud-hint { display: none; } .steer-zero { display: none; }
 }
 
 /* ---------- debrief ---------- */

@@ -98,6 +98,18 @@ export function createAudio() {
     rumble.gain.setTargetAtTime(audible ? 0.05 + throttle * 0.05 : 0, t, 0.06);
   };
 
+  // The indicator relay: a short click, higher as the lamp comes on.
+  self.tick = on => {
+    if (!ctx || !self.sound) return;
+    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'square';
+    o.frequency.value = on ? 1500 : 1100;
+    g.gain.setValueAtTime(0.05, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + 0.04);
+  };
+
   // ---------------------------------------------------------------- voice
   const hasSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
   let voicePick = null;

@@ -45,26 +45,38 @@
       <div class="getset-hint" id="getset-hint"></div>
     </div>
 
+    <!-- The dashboard, bottom centre: where you are in the lane and how the wheel is turned, then one strip
+         with indicators, limit, speed, revs, gear and pedals, so one glance down covers everything. -->
     <div class="hud-bottom">
-      <div class="gauge">
-        <div class="speed"><span id="speed">0</span><small>km/h</small></div>
-        <div class="gear-wrap"><div class="gear" id="gear">1</div><div class="gear-hint" id="gear-hint">paddles</div></div>
-        <div class="dist" id="dist" hidden><span id="dist-v">0</span><small id="dist-l">m to line</small></div>
-        <div class="rpm">
-          <div class="rpm-bar"><div class="rpm-fill" id="rpm-fill"></div><div class="rpm-idle"></div></div>
-          <div class="rpm-label"><span id="rpm">0</span> rpm</div>
+      <div class="lanebox">
+        <div class="lane" title="Your car across the road: kerb on the left, centre line in the middle, oncoming lane on the right">
+          <div class="lane-mine"></div><div class="lane-opp"></div><div class="lane-kerb l"></div><div class="lane-kerb r"></div><div class="lane-cl"></div>
+          <div class="lane-car" id="lane-car"></div>
         </div>
+        <div class="lane-txt" id="lane-txt"></div>
         <div class="steerbar" title="Steering wheel angle. Hold the wheel straight and press Z (or set centre) to make that straight ahead.">
           <div class="steer-track"><div class="steer-mid"></div><div class="steer-dot" id="steer-dot"></div></div>
           <div class="steer-label"><span id="steer-deg">0°</span><button class="steer-zero" id="btn-zero">set centre (Z)</button></div>
         </div>
       </div>
-      <div class="hud-hint" id="hud-hint">✕ / R retry · Esc exit</div>
-      <div class="pedals" id="pedals">
-        <div class="pedal" data-p="clu"><div class="track"><div class="bite"></div><div class="fill"></div><div class="gmark"></div></div><label>Clutch</label></div>
-        <div class="pedal" data-p="brk"><div class="track"><div class="fill"></div><div class="gmark"></div></div><label>Brake</label></div>
-        <div class="pedal" data-p="thr"><div class="track"><div class="fill"></div><div class="gmark"></div></div><label>Gas</label></div>
+      <div class="dash">
+        <div class="ind" id="ind-l" title="Left indicator (L2, D-pad ◀ or ,)">◀</div>
+        <div class="limit" id="limit" hidden title="Speed limit">30</div>
+        <div class="speed" id="speed-wrap"><span id="speed">0</span><small>km/h</small></div>
+        <div class="dist" id="dist" hidden><span id="dist-v">0</span><small id="dist-l">m to line</small></div>
+        <div class="rpm">
+          <div class="rpm-label"><span id="rpm">0</span> rpm · <span id="engine">engine on</span></div>
+          <div class="rpm-bar"><div class="rpm-red"></div><div class="rpm-fill" id="rpm-fill"></div><div class="rpm-idle"></div></div>
+        </div>
+        <div class="gear-wrap"><div class="gear" id="gear">1</div><div class="gear-hint" id="gear-hint">paddles</div></div>
+        <div class="pedals" id="pedals">
+          <div class="pedal" data-p="clu"><div class="track"><div class="bite"></div><div class="fill"></div><div class="gmark"></div></div><label>C</label></div>
+          <div class="pedal" data-p="brk"><div class="track"><div class="fill"></div><div class="gmark"></div></div><label>B</label></div>
+          <div class="pedal" data-p="thr"><div class="track"><div class="fill"></div><div class="gmark"></div></div><label>A</label></div>
+        </div>
+        <div class="ind" id="ind-r" title="Right indicator (R2, D-pad ▶ or .)">▶</div>
       </div>
+      <div class="hud-hint" id="hud-hint">✕ / R retry · Esc exit</div>
     </div>
   </div>
 
@@ -101,7 +113,7 @@
       </div>
       <details class="keys">
         <summary>Keyboard controls</summary>
-        <p>↑ / W gas · ↓ / S brake · ← → / A D steer · hold Space for clutch (it lifts slowly when you let go; hold Shift to pause it at the bite point) · E / Q gear up/down · Enter OK · R retry · Esc exit</p>
+        <p>↑ / W gas · ↓ / S brake · ← → / A D steer · hold Space for clutch (it lifts slowly when you let go; hold Shift to pause it at the bite point) · E / Q gear up/down · , / . indicators · Enter OK · R retry · Esc exit</p>
       </details>
     </div>
   </section>

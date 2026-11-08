@@ -19,9 +19,10 @@ export function roadOf(moment) {
 
 export function createSim(moment, snap = null) {
   const road = roadOf(moment);
-  const sim = { moment, road, t: 0, step: 0, frames: [], cues: [], ended: null, report: null, practice: !!snap, input: NEUTRAL };
+  const sim = { moment, road, t: 0, step: 0, frames: [], cues: [], ended: null, report: null, practice: !!snap, input: NEUTRAL, ind: 0, indTurned: false };
   if (snap) {
     sim.car = { ...snap.car };
+    sim.ind = snap.ind ?? 0;
     sim.lead = snap.lead ? { ...snap.lead } : null;
     sim.t = snap.t;
   } else {
@@ -45,12 +46,12 @@ function record(sim, inp) {
   const f = {
     t: sim.t, s: p.s, d: p.d, x: c.x, z: c.z, h: c.h, y: p.y, grade: p.grade,
     v: c.v, rpm: c.running ? c.omegaE * RPM : 0, running: c.running, gear: c.gear, e: c.e, tc: c.tc,
-    thr: inp.throttle, brk: inp.brake, clu: inp.clutch, steer: inp.steer,
+    thr: inp.throttle, brk: inp.brake, clu: inp.clutch, steer: inp.steer, ind: sim.ind,
     leadS: L ? L.s : null, leadV: L ? L.v : null,
     gap: L ? L.s - p.s - (CAR.length + LEAD_LEN) / 2 : null,
     a: back ? (c.v - back.v) / (sim.t - back.t) : 0,
     // Long practice sessions keep frames light (no restorable snapshot per frame).
-    snap: sim.moment.continuous ? null : { car: { ...c }, lead: L ? { ...L } : null, t: sim.t, input: { ...inp }, i: p.i },
+    snap: sim.moment.continuous ? null : { car: { ...c }, lead: L ? { ...L } : null, t: sim.t, input: { ...inp }, i: p.i, ind: sim.ind },
   };
   sim.frames.push(f);
   return f;
@@ -77,6 +78,22 @@ export function shiftGear(sim, dir) {
   return true;
 }
 
+// Indicator stalk: side -1 (left) or 1 (right) toggles that side on or off.
+export function signal(sim, side) {
+  if (sim.ended) return;
+  sim.ind = sim.ind === side ? 0 : side;
+  sim.indTurned = false;
+}
+
+// Like a real stalk, the indicator cancels itself when the wheel comes back after a turn the same way
+// (past about 36° of wheel, then back within about 9° of centre).
+function selfCancel(sim, steer) {
+  if (!sim.ind) return;
+  const way = steer * sim.ind;
+  if (way > 0.08) sim.indTurned = true;
+  else if (sim.indTurned && way < 0.02) { sim.ind = 0; sim.indTurned = false; }
+}
+
 export function stepSim(sim, inp) {
   if (sim.ended) return;
   sim.input = inp;
@@ -94,6 +111,7 @@ export function stepSim(sim, inp) {
   if (sim.step % 4 === 0) sim.proj = project(sim.road, c.x, c.z, p.i);
   if (sim.step % FRAME_STEPS === 0) {
     sim.proj = project(sim.road, c.x, c.z, sim.proj.i);
+    selfCancel(sim, inp.steer);
     const f = record(sim, inp);
     observe(sim.ins, sim, f);
     const M = sim.moment;
