@@ -38,6 +38,6 @@ export function recordPractice(progress, id, P) {
 export function resetProgress() { write(KEY, {}); return {}; }
 
 export function loadSettings() {
-  return { assist: 'full', camera: 'cockpit', voice: true, sound: true, transmission: 'manual', ...read(SETTINGS, {}) };
+  return { assist: 'full', camera: 'cockpit', voice: true, sound: true, transmission: 'manual', world: 'town', ...read(SETTINGS, {}) };
 }
 export function saveSettings(s) { write(SETTINGS, s); }

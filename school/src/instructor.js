@@ -48,16 +48,16 @@ function diagnoseStall(frames) {
   const braking = recent.some(x => x.brk > 0.15);
   const thr = recent.reduce((a, x) => a + x.thr, 0) / recent.length;
   if (braking && back.v > 0.8) {
-    return { title: 'Stalled while slowing down', tip: 'Press the clutch down before the car slows to walking pace. Brake and clutch go together at the end of a stop.' };
+    return { cue: 'Stalled. The clutch went down too late. Clutch fully down to restart.', title: 'Stalled while slowing down', tip: 'Press the clutch down before the car slows to walking pace. Brake and clutch go together at the end of a stop.' };
   }
   const maxClu = recent.reduce((a, x) => Math.max(a, x.clu), 0);
   if (maxClu - f.clu > 0.25) {
-    return { title: 'Clutch came up too fast', tip: 'Lift the clutch to the bite point, then pause. Let the car start rolling before you lift any further.' };
+    return { cue: 'Stalled. The clutch came up too fast. Clutch fully down to restart.', title: 'Clutch came up too fast', tip: 'Lift the clutch to the bite point, then pause. Let the car start rolling before you lift any further.' };
   }
   if (thr < 0.04) {
-    return { title: 'Not enough gas', tip: 'Add a little gas, about a quarter of the pedal, as the clutch reaches the bite point.' };
+    return { cue: 'Stalled. It needed a little more gas. Clutch fully down to restart.', title: 'Not enough gas', tip: 'Add a little gas, about a quarter of the pedal, as the clutch reaches the bite point.' };
   }
-  return { title: 'Stalled', tip: 'Ease the clutch up more slowly and keep a little gas on until it is fully up.' };
+  return { cue: 'Stalled. Clutch fully down to restart.', title: 'Stalled', tip: 'Ease the clutch up more slowly and keep a little gas on until it is fully up.' };
 }
 
 export function observe(ins, sim, f) {
@@ -73,7 +73,7 @@ export function observe(ins, sim, f) {
     S.stalls++;
     if (S.firstStall === null) S.firstStall = f.t;
     const dx = diagnoseStall(frames);
-    addEvent(ins, sim, f, { type: 'stall', severity: 'major', title: dx.title, tip: dx.tip, cue: 'Stalled. Clutch down fully to restart.', cooldown: 0.5 });
+    addEvent(ins, sim, f, { type: 'stall', severity: 'major', title: dx.title, tip: dx.tip, cue: dx.cue, cooldown: 0.5 });
   }
   ins.prevRunning = f.running;
 
@@ -82,26 +82,26 @@ export function observe(ins, sim, f) {
     if (f.v > 0.3 && -f.a > S.maxDecel) S.maxDecel = -f.a;
   }
   if (on.includes('lurch') && elapsed > 0.3 && f.a > LURCH) {
-    addEvent(ins, sim, f, { type: 'lurch', severity: 'minor', title: 'The car jerked forward', tip: 'Lift the clutch more slowly through the bite point.', cue: 'Easy, slower on the clutch.' });
+    addEvent(ins, sim, f, { type: 'lurch', severity: 'minor', title: 'The car jerked forward', tip: 'Lift the clutch more slowly through the bite point.', cue: 'Easy. Slower on the clutch.' });
   }
   if (on.includes('harsh') && f.v > 1 && -f.a > HARSH) {
-    addEvent(ins, sim, f, { type: 'harsh', severity: 'minor', title: 'Harsh braking', tip: 'Start braking earlier so you can press more gently.', cue: 'Gentler on the brake.' });
+    addEvent(ins, sim, f, { type: 'harsh', severity: 'minor', title: 'Harsh braking', tip: 'Start braking earlier so you can press more gently.', cue: 'Too hard on the brake. Ease off and press more gently.' });
   }
   if (f.thr > S.maxThr) S.maxThr = f.thr;
   if (!sim.car.auto && f.running && f.rpm > OVERREV && f.e > 0.02 && f.e < 0.9 && Math.abs(f.v) < 4) {
     S.overrevs++;
-    addEvent(ins, sim, f, { type: 'overrev', severity: 'minor', title: 'Too many revs on the clutch', tip: 'You only need a little gas to move off. High revs while the clutch slips wears it out.', cue: 'Too many revs, ease off the gas.', cooldown: 4 });
+    addEvent(ins, sim, f, { type: 'overrev', severity: 'minor', title: 'Too many revs on the clutch', tip: 'You only need a little gas to move off. High revs while the clutch slips wears it out.', cue: 'Too many revs. Ease off the gas; a quarter is plenty.', cooldown: 4 });
   }
   const dev = Math.abs(f.d - LANE_CENTER);
   if (dev > S.maxLaneDev) S.maxLaneDev = dev;
   if (on.includes('lane') && dev > 0.9) {
-    addEvent(ins, sim, f, { type: 'lane', severity: 'minor', title: f.d > LANE_CENTER ? 'Drifted into the other lane' : 'Drifted off the road edge', tip: 'Look far ahead to where you want to go; your hands follow your eyes.', cue: 'Stay in your lane.', cooldown: 4 });
+    addEvent(ins, sim, f, { type: 'lane', severity: 'minor', title: f.d > LANE_CENTER ? 'Drifted into the other lane' : 'Drifted off the road edge', tip: 'Look far ahead to where you want to go; your hands follow your eyes.', cue: f.d > LANE_CENTER ? 'You are drifting right. Steer gently back to the left lane.' : 'Too close to the edge. Steer gently back to the right.', cooldown: 4 });
   }
   if (f.v < -0.02) {
     ins.rollRun += -f.v * (f.t - frames[n - 2].t);
     if (ins.rollRun > S.rollback) S.rollback = ins.rollRun;
     if (on.includes('rollback') && ins.rollRun > 0.3) {
-      addEvent(ins, sim, f, { type: 'rollback', severity: 'major', title: 'Rolled backwards', tip: 'Keep the brake on until you feel the car pull against it at the bite point, then swap brake for gas.', cue: 'Rolling back! Clutch up a touch, or brake.', cooldown: 5 });
+      addEvent(ins, sim, f, { type: 'rollback', severity: 'major', title: 'Rolled backwards', tip: 'Keep the brake on until you feel the car pull against it at the bite point, then swap brake for gas.', cue: 'Rolling back! Press the brake.', cooldown: 5 });
     }
   } else if (f.v > 0.05) {
     ins.rollRun = 0;
@@ -111,10 +111,10 @@ export function observe(ins, sim, f) {
     if (elapsed > 4 && f.gap > S.maxGap) S.maxGap = f.gap;
     if (f.gap <= 0) {
       S.crashed = true;
-      addEvent(ins, sim, f, { type: 'crash', severity: 'major', title: 'Bumped the vehicle ahead', tip: 'Leave a gap you could walk through. Clutch down and brake early when traffic stops.', cue: 'Bump! Brake.' });
+      addEvent(ins, sim, f, { type: 'crash', severity: 'major', title: 'Bumped the vehicle ahead', tip: 'Leave a gap you could walk through. Clutch down and brake early when traffic stops.', cue: 'Bump! Brake now.' });
       if (!M.continuous) ins.hardEnd = { completed: false, reason: 'You bumped the auto ahead' };
     } else if (on.includes('tailgate') && f.gap < 1.5 && f.v > 0.2) {
-      addEvent(ins, sim, f, { type: 'tailgate', severity: 'minor', title: 'Too close to the vehicle ahead', tip: 'Keep at least a car length or so in slow traffic.', cue: 'Too close, ease off.', cooldown: 4 });
+      addEvent(ins, sim, f, { type: 'tailgate', severity: 'minor', title: 'Too close to the vehicle ahead', tip: 'Keep at least a car length or so in slow traffic.', cue: 'Too close to the auto. Ease off and let the gap grow.', cooldown: 4 });
     }
   }
   if (M.speedZone && f.s > M.speedZone.s0 && f.s < M.speedZone.s1 && f.v > S.maxSpeedZone) S.maxSpeedZone = f.v;
@@ -136,7 +136,7 @@ export function observe(ins, sim, f) {
 export function noteGrind(sim) {
   const f = sim.frames[sim.frames.length - 1];
   sim.ins.stats.grinds++;
-  addEvent(sim.ins, sim, f, { type: 'grind', severity: 'minor', title: 'Changed gear without the clutch', tip: 'Press the clutch fully down before every gear change.', cue: 'Clutch down to change gear.' });
+  addEvent(sim.ins, sim, f, { type: 'grind', severity: 'minor', title: 'Changed gear without the clutch', tip: 'Press the clutch fully down before every gear change.', cue: 'Press the clutch fully down before changing gear.' });
 }
 
 export function evaluate(sim) {

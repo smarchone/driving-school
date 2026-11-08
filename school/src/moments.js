@@ -28,8 +28,8 @@ const movingOff = {
     praise: 'Smooth. Nice gentle right foot.',
     pose: BRAKE_POSE,
     live: [
-      { text: 'Slowly ease off the brake. The car creeps on its own.', say: 'Slowly ease off the brake and let it creep.', done: f => f.v > 0.3 },
-      { text: 'Move your foot to the gas (right pedal) and press gently.', say: 'Now gently onto the gas.', done: f => f.thr > 0.05 && f.v > 1.5 },
+      { text: 'Slowly ease off the brake. The car creeps forward by itself; no gas yet.', say: 'Slowly ease off the brake, and let the car creep forward by itself.', done: f => f.v > 0.3 },
+      { text: 'Move your foot to the gas (right pedal). Press it gently, about a third of the way.', say: 'Good. Now move your foot to the gas, and press gently.', done: f => f.thr > 0.05 && f.v > 1.5 },
       { text: 'Roll through the gate.', say: 'Nice. Roll through the gate.', done: () => false },
     ],
     criteria: [{ id: 'gentle', label: 'Gentle on the gas', fail: 'Too much gas.', test: S => S.maxThr <= 0.6, detail: S => `peak ${Math.round(S.maxThr * 100)}%`, tip: 'Squeeze the gas. A third of the pedal is plenty in town.' }],
@@ -41,19 +41,19 @@ const movingOff = {
   why: 'Every drive starts here. Most new drivers stall because they rush the clutch.',
   goal: 'Move off smoothly and roll past the gate without stalling.',
   steps: [
-    'Clutch fully down and foot on the brake. First gear is already in.',
-    'Lift the clutch slowly until the engine note drops. That is the bite point. Hold it there.',
-    'Add a little gas, let the car creep forward, then lift the clutch the rest of the way.',
+    'Clutch (left pedal) fully down and brake (middle pedal) on. First gear is already in.',
+    'Take your foot off the brake. Lift the clutch very slowly and listen: when the engine note drops and the rev bar dips, that is the bite point. Hold your foot still there.',
+    'Press the gas about a quarter of the way. Once the car is rolling, lift the clutch the rest of the way, slowly.',
   ],
   praise: 'Smooth. You found the bite point.',
   road: { segments: [{ len: 200 }] },
   start: { s: 20, v: 0, gear: 1 },
   pose: [CLUTCH_DOWN, BRAKE_ON],
   live: [
-    { text: 'Let go of the brake. Keep the clutch down.', say: 'Now let go of the brake. Keep the clutch down.', done: f => f.brk < 0.05 },
-    { text: 'Lift the clutch slowly until the car starts to creep. That is the bite point.', say: 'Slowly lift the clutch until the car starts to creep.', done: f => f.v > 0.3 },
-    { text: 'Add a little gas, then lift the clutch the rest of the way.', say: 'Good. A little gas, and lift the clutch all the way.', done: f => f.clu < 0.15 && f.v > 1 },
-    { text: 'Roll through the gate.', say: 'Nice. Roll through the gate.', done: () => false },
+    { text: 'Take your foot off the brake. Keep the clutch down.', say: 'Take your foot off the brake. Keep the clutch down.', done: f => f.brk < 0.05 },
+    { text: 'Lift the clutch slowly. Stop when the engine note drops and the car creeps: that is the bite point.', say: 'Now lift the clutch, slowly. Stop as soon as you hear the engine note drop.', done: f => f.v > 0.3 },
+    { text: 'Hold the clutch still. Gas a quarter of the way, then lift the clutch the rest of the way, slowly.', say: 'That is the bite point. Hold it. A quarter of gas, then lift the clutch the rest of the way, slowly.', done: f => f.clu < 0.15 && f.v > 1 },
+    { text: 'Roll through the gate.', say: 'Well done. Roll on through the gate.', done: () => false },
   ],
   zones: [{ type: 'finish', s: 50 }],
   align: 'time',
@@ -66,10 +66,10 @@ const movingOff = {
     { manual: true, id: 'revs', label: 'Gentle on the revs', fail: 'Too many revs.', events: ['overrev'], test: S => S.overrevs === 0, tip: 'A quarter of the gas pedal is plenty to move off.' },
   ],
   cues: [
-    { manual: true, id: 'gas', text: 'Add a little gas.', when: f => f.running && f.e > 0.08 && f.rpm < 720 && f.thr < 0.05 },
+    { manual: true, id: 'gas', text: 'The revs are dropping. Add a little gas, or it will stall.', when: f => f.running && f.e > 0.08 && f.rpm < 720 && f.thr < 0.05 },
   ],
   drive: ({ target: () => 4.2 }),
-  demo: { stopped: 'Clutch fully down, first gear.', launch: 'Lift to the bite point and add a little gas.', drive: 'It is rolling. Now lift the clutch all the way.' },
+  demo: { stopped: 'Clutch fully down, first gear.', launch: 'Clutch up slowly until the engine note drops. That is the bite. Now a little gas.', drive: 'It is rolling. Now lift the clutch the rest of the way.' },
 };
 
 const LINE = 110;
@@ -85,8 +85,8 @@ const stopLine = {
       'Stop just before the line, ease off a touch for a soft stop, then hold the brake so you do not creep.',
     ],
     live: [
-      { text: 'Brake gently when you reach the amber BRAKE mark.', done: f => f.brk > 0.05 },
-      { text: 'Watch the stop marker. Keep it green, just before the line. Then hold the brake.', done: () => false },
+      { text: 'Keep your speed. Brake gently when you reach the amber BRAKE mark.', say: 'Keep your speed. Brake gently at the amber mark.', done: f => f.brk > 0.05 },
+      { text: 'Watch the marker on the road: press harder if it turns red, lighter if amber. Keep it green, then hold the brake.', say: 'Watch the marker on the road. Keep it green.', done: () => false },
     ],
     demo: { drive: 'Hold your speed and look at the line.', braking: 'Brake early and gently.', stopped: 'Soft stop, then hold the brake.' },
   },
@@ -97,17 +97,17 @@ const stopLine = {
   goal: 'Stop with your front bumper just before the white line, without stalling.',
   steps: [
     'Start braking at the amber BRAKE mark, 24 m before the line (about 6 car lengths). Gentle at first, then a little more.',
-    'As the car slows to walking pace, press the clutch down so the engine does not stall.',
-    'Stop with your bumper just before the line. Ease off the brake at the very end for a soft stop.',
+    'When the speedo drops to about 15 km/h, press the clutch fully down, or the engine will stall.',
+    'Stop with your bumper just before the line. Ease off the brake a little at the very end for a soft stop.',
   ],
   praise: 'Clean stop, right on the line.',
   road: { segments: [{ len: 170 }] },
   start: { s: 10, v: 30 / 3.6, gear: 2 },
   pose: null,
   live: [
-    { text: 'Brake gently when you reach the amber BRAKE mark.', done: f => f.brk > 0.05 },
-    { text: 'As it slows to walking pace, clutch fully down.', say: 'Clutch down as it slows.', done: f => f.clu > 0.85 },
-    { text: 'Watch the stop marker. Keep it green, just before the line.', done: () => false },
+    { text: 'Keep your speed. Brake gently when you reach the amber BRAKE mark.', say: 'Keep your speed. Brake gently at the amber mark.', done: f => f.brk > 0.05 },
+    { text: 'At about 15 km/h, clutch fully down so it does not stall.', say: 'Good. As you slow to about 15, clutch fully down.', done: f => f.clu > 0.85 },
+    { text: 'Watch the marker on the road: press harder if it turns red, lighter if amber. Keep it green.', say: 'Watch the marker on the road. Keep it green.', done: () => false },
   ],
   zones: [
     { type: 'stopLine', s: LINE }, { type: 'stopBox', s0: LINE - 3, s1: LINE },
@@ -151,9 +151,9 @@ const stopLine = {
   ],
   cues: [
     // Same rule as the on-road "you'd stop here" marker: gentle braking from here just reaches the line.
-    { id: 'brake', once: true, text: 'Brake now, gently.', when: f => f.brk < 0.05 && f.v > 3 && front(f) + (f.v * f.v) / (2 * 1.5) >= LINE - 0.5 },
-    { manual: true, id: 'clutch', text: "Clutch down, or you'll stall.", when: f => f.running && f.gear > 0 && f.clu < 0.5 && f.v > 0.3 && f.rpm < 1150 && f.brk > 0.05 },
-    { id: 'soft', once: true, text: 'Ease off the brake a little for a soft stop.', when: f => f.v > 0.2 && f.v < 1.5 && f.brk > 0.5 },
+    { id: 'brake', once: true, text: 'Brake now. Gently.', when: f => f.brk < 0.05 && f.v > 3 && front(f) + (f.v * f.v) / (2 * 1.5) >= LINE - 0.5 },
+    { manual: true, id: 'clutch', text: 'Clutch down now, the revs are getting low.', when: f => f.running && f.gear > 0 && f.clu < 0.5 && f.v > 0.3 && f.rpm < 1150 && f.brk > 0.05 },
+    { id: 'soft', once: true, text: 'Nearly stopped. Ease off the brake a touch for a soft stop.', when: f => f.v > 0.2 && f.v < 1.5 && f.brk > 0.5 },
   ],
   drive: ({ target: () => 30 / 3.6, stopAt: sim => LINE - 1.0 - (sim.proj.s + CAR.length / 2) }),
   demo: { drive: 'Hold your speed and look at the line.', braking: 'Brake early and gently. Clutch down as the revs drop.', stopped: 'Soft stop, just before the line.' },
@@ -170,9 +170,9 @@ const bend = {
   why: 'Most new drivers enter bends too fast and drift wide into oncoming traffic.',
   goal: 'Take the left bend at a safe speed and stay in your lane.',
   steps: [
-    'Slow down before the bend, while the road is still straight.',
-    'Turn in smoothly and keep the car in the left lane.',
-    'Look through the bend to where you are going, then straighten up.',
+    'Brake on the straight until the speedo reads 25 km/h or less, before you turn the wheel.',
+    'Turn the wheel in gently and hold it steady. Make small corrections, not big ones.',
+    'Look at the far end of the bend, not at the bonnet. Straighten the wheel as the road straightens.',
   ],
   praise: 'Nice line. Slow in, smooth through.',
   road: { segments: [{ len: BEND0 }, { len: BEND1 - BEND0, turn: -90 }, { len: 90 }] },
@@ -182,9 +182,9 @@ const bend = {
   speedZone: { s0: BEND0 - 5, s1: BEND1 },
   target: { kind: 'distance', s: BEND0, label: 'Bend' },
   live: [
-    { text: 'Slow to 25 km/h before the bend.', done: f => f.s > BEND0 - 5 },
-    { text: 'Steer smoothly. Stay in the left lane.', say: 'Look through the bend.', done: f => f.s > BEND1 },
-    { text: 'Straighten up and carry on to the gate.', done: () => false },
+    { text: 'Brake on the straight to 25 km/h before the bend.', say: 'Brake on the straight. Get down to 25 before the bend.', done: f => f.s > BEND0 - 5 },
+    { text: 'Turn in gently and hold the wheel steady. Keep left. Look at the far end of the bend.', say: 'Turn in gently. Eyes on the far end of the bend.', done: f => f.s > BEND1 },
+    { text: 'Straighten the wheel and carry on to the gate.', say: 'Straighten up, and on to the gate.', done: () => false },
   ],
   align: 'distance',
   timeLimit: 50,
@@ -196,8 +196,8 @@ const bend = {
     noStall,
   ],
   cues: [
-    { id: 'slow', once: true, text: 'Slow down before the bend, not in it.', when: f => f.s > BEND0 - 28 && f.s < BEND0 && f.v > 26 / 3.6 },
-    { id: 'look', once: true, text: 'Look where you want to go.', when: f => f.s > BEND0 + 2 && f.s < BEND0 + 10 },
+    { id: 'slow', once: true, text: 'Too fast for the bend. Brake now, while the road is straight.', when: f => f.s > BEND0 - 28 && f.s < BEND0 && f.v > 26 / 3.6 },
+    { id: 'look', once: true, text: 'Look to the end of the bend. Small, steady steering.', when: f => f.s > BEND0 + 2 && f.s < BEND0 + 10 },
   ],
   drive: ({ target: sim => (sim.proj.s < BEND0 - 25 ? 30 / 3.6 : 22 / 3.6) }),
   demo: { drive: 'Brake on the straight, then steer smoothly through.' },
@@ -211,13 +211,13 @@ const traffic = {
     goal: 'Follow the auto through stop-go traffic. Keep a safe gap, no bumps.',
     steps: [
       'When the auto moves, ease off the brake and let the car creep after it.',
-      'Creep is often enough. Add only a touch of gas, and cover the brake.',
-      'When it stops, brake smoothly and hold the brake while you wait.',
+      'Creeping is usually fast enough. Use only a touch of gas, and keep your foot ready over the brake.',
+      'Stay about one car length back. When the auto stops, brake smoothly and hold the brake while you wait.',
     ],
     pose: BRAKE_POSE,
     cues: [
-      { id: 'go', text: "Traffic's moving. Ease off the brake.", when: f => f.leadV > 1 && f.gap > 6 && f.v < 0.3 },
-      { id: 'close', text: 'Too close. Brake gently.', when: f => f.gap < 2.2 && f.v > 0.4 && f.leadV < f.v },
+      { id: 'go', text: "The auto's moving. Ease off the brake and creep after it.", when: f => f.leadV > 1 && f.gap > 6 && f.v < 0.3 },
+      { id: 'close', text: 'Too close. Brake gently and let the gap grow.', when: f => f.gap < 2.2 && f.v > 0.4 && f.leadV < f.v },
     ],
     demo: { stopped: 'Brake on. Wait for the auto.', drive: 'It moved. Off the brake, creep after it.', stopping: 'It is stopping. Brake smoothly and hold.' },
   },
@@ -227,9 +227,9 @@ const traffic = {
   why: 'Bumper-to-bumper traffic is where clutch control matters most, and where most stalls happen.',
   goal: 'Follow the auto through stop-go traffic. Keep a safe gap, no bumps, no stalls.',
   steps: [
-    'When the auto moves, clutch to the bite point and creep after it.',
-    'Keep about a car length of gap. Use the clutch and brake, not lots of gas.',
-    'When it stops, clutch down and brake. Wait, then go again.',
+    'When the auto moves, lift the clutch to the bite point (the engine note drops). The car creeps after it with little or no gas.',
+    'Stay about one car length back. Too close: press the clutch down a little and brake. Falling behind: lift the clutch a touch or add a little gas.',
+    'When the auto stops, clutch fully down and brake. Keep both down while you wait.',
   ],
   praise: 'Calm and in control. That is traffic sorted.',
   road: { segments: [{ len: 200 }] },
@@ -263,9 +263,9 @@ const traffic = {
     noStall,
   ],
   cues: [
-    { manual: true, id: 'go', text: "Traffic's moving. Bite point, and go.", when: f => f.leadV > 1 && f.gap > 6 && f.v < 0.3 },
-    { manual: true, id: 'close', text: 'Too close. Clutch down, ease off.', when: f => f.gap < 2.2 && f.v > 0.4 && f.leadV < f.v },
-    { manual: true, id: 'clutch', text: "Clutch down, or you'll stall.", when: f => f.running && f.gear > 0 && f.clu < 0.5 && f.v > 0.2 && f.rpm < 800 && f.brk > 0.05 },
+    { manual: true, id: 'go', text: "The auto's moving. Clutch up to the bite point, and creep after it.", when: f => f.leadV > 1 && f.gap > 6 && f.v < 0.3 },
+    { manual: true, id: 'close', text: 'Too close. Clutch down and brake gently.', when: f => f.gap < 2.2 && f.v > 0.4 && f.leadV < f.v },
+    { manual: true, id: 'clutch', text: 'Clutch down now, the revs are getting low.', when: f => f.running && f.gear > 0 && f.clu < 0.5 && f.v > 0.2 && f.rpm < 800 && f.brk > 0.05 },
   ],
   drive: ({
     target: sim => {
@@ -277,7 +277,7 @@ const traffic = {
     },
     startDelay: 0.3,
   }),
-  demo: { stopped: 'Clutch down, brake on. Wait for the auto.', launch: 'It moved. Bite point, creep after it.', stopping: 'It is stopping. Clutch down and brake.' },
+  demo: { stopped: 'Clutch down, brake on. Wait for the auto.', launch: 'It moved. Clutch up to the bite point, and creep after it.', stopping: 'It is stopping. Clutch down and brake.' },
 };
 
 const hill = {
@@ -292,10 +292,10 @@ const hill = {
     ],
     pose: BRAKE_POSE,
     live: [
-      { text: 'Swap from brake to gas (right pedal) in one quick move.', say: 'Quick swap, brake to gas.', done: f => f.thr > 0.1 && f.brk < 0.05 },
-      { text: 'Squeeze the gas progressively up the ramp.', done: () => false },
+      { text: 'When ready, move your foot from the brake to the gas (right pedal) in one quick move.', say: 'When you are ready, move your foot from brake to gas in one quick move.', done: f => f.thr > 0.1 && f.brk < 0.05 },
+      { text: 'Press the gas a bit further as you climb. Smooth, no stabbing.', say: 'Good. Squeeze a bit more gas as you climb.', done: () => false },
     ],
-    cues: [{ id: 'hold', once: true, text: 'Brake on. When ready, swap quickly to the gas.', when: (f, sim, ins) => f.t - ins.startT > 0.4 }],
+    cues: [{ id: 'hold', once: true, text: 'Brake on. When you are ready, swap quickly to the gas.', when: (f, sim, ins) => f.t - ins.startT > 0.4 }],
     demo: { stopped: 'Brake on, in D.', drive: 'Quick swap from brake to gas, then squeeze.' },
   },
   n: 5,
@@ -304,19 +304,19 @@ const hill = {
   why: 'Flyovers and ramps are everywhere. Rolling back into the bike behind you is the classic beginner fear.',
   goal: 'Pull away up the flyover ramp without rolling back.',
   steps: [
-    'Keep the brake on. Clutch down, first gear.',
-    'Add a little gas and lift the clutch to the bite point. Feel the car pull against the brake.',
-    'Now release the brake and add more gas as you lift the clutch the rest of the way.',
+    'Keep the brake on. Clutch fully down, first gear.',
+    'Press the gas a quarter of the way and hold it. Lift the clutch slowly until the engine note drops and the rev bar dips: the car is now pulling against the brake.',
+    'Keep the clutch still and release the brake. Then add a little more gas and lift the clutch the rest of the way, slowly.',
   ],
   praise: 'Rock steady. No roll-back at all.',
   road: { segments: [{ len: 20 }, { len: 90, grade: 0.1 }] },
   start: { s: 40, v: 0, gear: 1 },
   pose: [CLUTCH_DOWN, BRAKE_ON],
   live: [
-    { text: 'Add a little gas and lift the clutch to the bite point. Keep the brake on.', say: 'Keep the brake on. A little gas, and clutch up to the bite point.', done: f => pullForce(f) > 1100 },
-    { text: 'Feel it pull? Release the brake.', say: 'Feel it pull? Release the brake.', done: f => f.brk < 0.05 && f.v >= 0 },
-    { text: 'More gas as you lift the clutch the rest of the way.', say: 'More gas, and lift the clutch slowly.', done: f => f.clu < 0.15 && f.v > 1 },
-    { text: 'Up the ramp to the gate.', done: () => false },
+    { text: 'Brake stays on. Gas a quarter of the way, then lift the clutch slowly until the engine note drops.', say: 'Keep the brake on. A quarter of gas, then lift the clutch slowly until the engine note drops.', done: f => pullForce(f) > 1100 },
+    { text: 'Engine note dropped: the car is pulling. Keep the clutch still and release the brake.', say: 'That is the bite. Keep the clutch still, and release the brake.', done: f => f.brk < 0.05 && f.v >= 0 },
+    { text: 'A little more gas as you lift the clutch the rest of the way, slowly.', say: 'Now a little more gas, and lift the clutch slowly.', done: f => f.clu < 0.15 && f.v > 1 },
+    { text: 'Up the ramp to the gate.', say: 'Good. Up the ramp to the gate.', done: () => false },
   ],
   zones: [{ type: 'finish', s: 65 }],
   align: 'time',
@@ -327,16 +327,16 @@ const hill = {
     return f.s >= 65 ? { completed: true, reason: 'Up the ramp' } : null;
   },
   criteria: [
-    { id: 'roll', label: 'No roll-back (under 30 cm)', fail: 'You rolled back.', events: ['rollback'], test: S => S.rollback <= 0.3, detail: S => S.rollback > 0.05 ? `${(S.rollback * 100).toFixed(0)} cm back` : '', tip: 'Do not release the brake until you feel the car pull at the bite point.' },
+    { id: 'roll', label: 'No roll-back (under 30 cm)', fail: 'You rolled back.', events: ['rollback'], test: S => S.rollback <= 0.3, detail: S => S.rollback > 0.05 ? `${(S.rollback * 100).toFixed(0)} cm back` : '', tip: 'Keep the brake on until the engine note drops at the bite point. That drop means the car is pulling and will not roll back.' },
     noStall,
     { id: 'smooth', label: 'Smooth pull-away', fail: 'The car jerked.', events: ['lurch'], test: S => S.maxAccel <= 2.8, tip: 'Once the brake is off, lift the clutch slowly while adding gas.' },
   ],
   cues: [
-    { manual: true, id: 'hold', once: true, text: 'Brake on. Gas, then clutch to the bite point.', when: (f, sim, ins) => f.t - ins.startT > 0.4 },
-    { manual: true, id: 'pull', once: true, text: 'Feel it pull? Now release the brake.', when: f => f.brk > 0.2 && f.tc * 14.76 * CAR.eff / CAR.r > 1100 },
+    { manual: true, id: 'hold', once: true, text: 'Brake on. A quarter of gas, then clutch up slowly to the bite point.', when: (f, sim, ins) => f.t - ins.startT > 0.4 },
+    { manual: true, id: 'pull', once: true, text: "That's the bite. Keep the clutch still, and release the brake.", when: f => f.brk > 0.2 && f.tc * 14.76 * CAR.eff / CAR.r > 1100 },
   ],
   drive: ({ target: () => 3.5, hill: true }),
-  demo: { stopped: 'Brake on, clutch down.', launch: 'Gas, bite point. Feel it pull, then release the brake.', drive: 'Brake off. Lift the clutch, more gas.' },
+  demo: { stopped: 'Brake on, clutch down.', launch: 'A little gas, then clutch up until the engine note drops. Now it is pulling, so the brake can come off.', drive: 'Brake off. Lift the clutch, more gas.' },
 };
 
 // Free drive: a town loop (left-hand corners, a small flyover hump), repeated so you can keep going.

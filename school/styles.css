@@ -43,6 +43,8 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .btn.primary:hover { background: #5ee6da; }
 .btn.ghost { background: transparent; }
 .chip { border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(8px); padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer; }
+select.chip { color: inherit; font: inherit; font-size: 13px; font-weight: 600; max-width: 260px; }
+select.chip option { background: #1b2027; }
 .chip:hover { background: rgba(40,48,58,0.9); }
 .chip.on { border-color: var(--ghost); color: var(--ghost); }
 
@@ -123,7 +125,9 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .pose li.ok::before { background: var(--pass); border-color: var(--pass); }
 .getset-hint { color: var(--muted); font-size: 15px; line-height: 1.45; }
 
-.hud-bottom { position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+/* The dashboard sits bottom-centre, gauge and pedals side by side, so one glance down covers both. */
+.hud-bottom { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: calc(100% - 32px); display: grid; grid-template-columns: auto auto; align-items: end; gap: 6px 12px; }
+.hud-bottom .hud-hint { grid-column: 1 / -1; grid-row: 2; padding-bottom: 0; }
 .gauge { display: flex; align-items: center; gap: 18px; padding: 14px 18px; border-radius: 16px; background: var(--panel); backdrop-filter: blur(8px); border: 1px solid var(--line); }
 .speed { font-size: 46px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1; }
 .speed small { font-size: 13px; font-weight: 600; color: var(--muted); margin-left: 4px; letter-spacing: 0; }
@@ -136,6 +140,15 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .rpm-fill.low { background: var(--clutch); } .rpm-fill.high { background: var(--brake); } .rpm-fill.off { background: transparent; }
 .rpm-idle { position: absolute; top: 0; bottom: 0; left: 13%; width: 2px; background: rgba(255,255,255,0.35); }
 .rpm-label { font-size: 12px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+/* Steering: the dot shows wheel angle within ±90°, so a small off-centre rest is easy to see. */
+.steerbar { width: 150px; }
+.steer-track { position: relative; height: 10px; border-radius: 5px; background: rgba(255,255,255,0.08); }
+.steer-mid { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: rgba(255,255,255,0.45); }
+.steer-dot { position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--ghost); box-shadow: 0 0 8px var(--ghost); }
+.steer-dot.off { background: var(--clutch); box-shadow: 0 0 8px var(--clutch); }
+.steer-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.steer-zero { pointer-events: auto; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: inherit; font: inherit; font-size: 11px; border-radius: 999px; padding: 1px 8px; cursor: pointer; }
+.steer-zero:hover { color: var(--text, #e9edf2); }
 .hud-hint { color: rgba(233,237,242,0.55); font-size: 12px; padding-bottom: 8px; text-align: center; }
 
 .pedals { display: flex; gap: 12px; padding: 14px 16px 10px; border-radius: 16px; background: var(--panel); backdrop-filter: blur(8px); border: 1px solid var(--line); }
@@ -153,7 +166,7 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 
 @media (max-width: 720px) {
   .gauge { gap: 10px; padding: 10px 12px; } .speed { font-size: 32px; } .rpm { width: 90px; }
-  .track { height: 90px; width: 26px; } .hud-hint { display: none; }
+  .track { height: 90px; width: 26px; } .hud-hint { display: none; } .steerbar { width: 90px; } .steer-zero { display: none; }
 }
 
 /* ---------- debrief ---------- */

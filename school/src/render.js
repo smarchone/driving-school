@@ -3,9 +3,27 @@ import * as THREE from 'three';
 import { pointAt, LANE, LANE_CENTER } from './road.js';
 import { CAR } from './physics.js';
 import { LEAD_LEN } from './sim.js';
+import { buildWorld } from './worlds.js';
 
 const HALF = LANE;          // road half-width
 const SHOULDER = 2;
+
+// Asset variants: how the world around the road looks. Physics and lessons are the same in every variant.
+//   town  - Indian street: sky, ground, kerbs, buildings, trees, flyover walls
+//   space - only the road, floating in pitch black
+//   the rest - only the road, floating in a procedural world from src/worlds.js (picked in lab/worlds.html)
+const VOID = { background: 0x000000, fog: null, ground: false, scenery: false };
+export const VARIANTS = {
+  town: { label: 'Town', background: 0xcfe0ea, fog: [70, 340], ground: true, scenery: true },
+  space: { label: 'Space', ...VOID },
+  clouds: { label: 'Clouds', ...VOID, world: 'clouds' },
+  aurora: { label: 'Aurora', ...VOID, world: 'aurora' },
+  lorenz: { label: 'Lorenz', ...VOID, world: 'lorenz' },
+  neon: { label: 'Neon', ...VOID, world: 'neon' },
+  glass: { label: 'Glass', ...VOID, world: 'glass' },
+  ink: { label: 'Ink', ...VOID, world: 'ink' },
+};
+const TOWN_LIGHTS = { hemi: [0xe6f2ff, 0x6b5d45, 1.1], sun: [0xfff1dc, 1.4, [60, 100, 40]] };
 
 function rng(seed) {
   let s = seed >>> 0;
@@ -130,24 +148,40 @@ function placeOnRoad(obj, road, s, d, yaw = 0) {
   return obj;
 }
 
-export function createRenderer(canvas) {
+export function createRenderer(canvas, variantName = 'town') {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   const scene = new THREE.Scene();
-  const sky = new THREE.Color(0xcfe0ea);
-  scene.background = sky;
-  scene.fog = new THREE.Fog(sky, 70, 340);
   const camera = new THREE.PerspectiveCamera(68, 1, 0.05, 1200);
   scene.add(camera);
-  scene.add(new THREE.HemisphereLight(0xe6f2ff, 0x6b5d45, 1.1));
-  const sun = new THREE.DirectionalLight(0xfff1dc, 1.4);
-  sun.position.set(60, 100, 40);
-  scene.add(sun);
+  const hemi = new THREE.HemisphereLight();
+  const sun = new THREE.DirectionalLight();
+  scene.add(hemi, sun);
 
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshLambertMaterial({ color: 0x8c8a62 }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.06;
   scene.add(ground);
+
+  let variant = VARIANTS[variantName] || VARIANTS.town;
+  let env = null, roadCenter = new THREE.Vector2();
+  const t0 = performance.now();
+  function applyVariant() {
+    if (env) { scene.remove(env.group); env.dispose(); env = null; }
+    if (variant.world) {
+      env = buildWorld(variant.world, renderer);
+      env.place(roadCenter);
+      scene.add(env.group);
+    }
+    const L = env?.lights || TOWN_LIGHTS;
+    hemi.color.set(L.hemi[0]); hemi.groundColor.set(L.hemi[1]); hemi.intensity = L.hemi[2];
+    sun.color.set(L.sun[0]); sun.intensity = L.sun[1]; sun.position.set(...L.sun[2]);
+    const bg = new THREE.Color(variant.background);
+    scene.background = bg;
+    scene.fog = variant.fog ? new THREE.Fog(bg, ...variant.fog) : null;
+    ground.visible = variant.ground;
+  }
+  applyVariant();
 
   // Dashboard silhouette fixed to the camera in cockpit view.
   const dash = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.32, 0.5), new THREE.MeshLambertMaterial({ color: 0x24272b }));
@@ -192,13 +226,25 @@ export function createRenderer(canvas) {
   let camInit = false;
   const winTex = windowsTex();
 
+  let current = null;
+  function setVariant(name) {
+    variant = VARIANTS[name] || VARIANTS.town;
+    applyVariant();
+    if (current) setMoment(...current);
+  }
+
   function setMoment(moment, rd) {
+    current = [moment, rd];
     road = rd;
     if (world) { scene.remove(world); world.traverse(o => { o.geometry?.dispose?.(); }); }
     world = new THREE.Group();
     assistObjs = [];
     // A looping road is stored as several identical laps; draw one.
     const L = Math.min(road.length, moment.lapLength ?? road.length);
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const p of road.pts) { if (p.s > L) break; x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+    roadCenter.set((x0 + x1) / 2, (z0 + z1) / 2);
+    env?.place(roadCenter);
     const add = (geo, color, opts = {}) => {
       const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, ...opts }));
       world.add(m);
@@ -206,8 +252,10 @@ export function createRenderer(canvas) {
     };
     const tarmac = add(ribbon(road, -HALF, HALF, 0, L, 0.0), 0x45484d);
     tarmac.renderOrder = 0;
-    add(ribbon(road, -HALF - SHOULDER, -HALF, 0, L, -0.01), 0x9c8c6c);
-    add(ribbon(road, HALF, HALF + SHOULDER, 0, L, -0.01), 0x9c8c6c);
+    if (variant.scenery) {
+      add(ribbon(road, -HALF - SHOULDER, -HALF, 0, L, -0.01), 0x9c8c6c);
+      add(ribbon(road, HALF, HALF + SHOULDER, 0, L, -0.01), 0x9c8c6c);
+    }
     const white = 0xf2f2ee;
     add(ribbon(road, -HALF + 0.12, -HALF + 0.27, 0, L, 0.02), white);
     add(ribbon(road, HALF - 0.27, HALF - 0.12, 0, L, 0.02), white);
@@ -222,7 +270,7 @@ export function createRenderer(canvas) {
       if (up && last && last[1] >= p.s - 1) last[1] = p.s;
       else if (up) ranges.push([p.s, p.s]);
     }
-    for (const [a, b] of ranges) {
+    if (variant.scenery) for (const [a, b] of ranges) {
       const s0 = Math.max(0, a - 4), s1 = Math.min(L, b + 4);
       for (const d of [-HALF - SHOULDER, HALF + SHOULDER]) {
         add(wall(road, d, 0, s0, s1, true), 0xb9b4aa);
@@ -232,7 +280,7 @@ export function createRenderer(canvas) {
 
     const r = rng(7 + moment.n * 31);
     const palette = [0xe8c07d, 0xd98e73, 0x9fc5c8, 0xe6d3b3, 0xc9a0c9, 0xf2e2a8, 0xb7c99a, 0xe0a6a0];
-    for (const side of [-1, 1]) {
+    if (variant.scenery) for (const side of [-1, 1]) {
       for (let s = 4; s < L + 40; s += 9 + r() * 6) {
         const p = pointAt(road, Math.min(s, L), side * (11 + r() * 5));
         if (moment.road.segments.some(sg => sg.turn) && side < 0) {
@@ -427,6 +475,7 @@ export function createRenderer(canvas) {
     } else if (camera.view) camera.clearViewOffset();
     camera.position.copy(pos);
     camera.lookAt(look);
+    env?.frame(camera, (performance.now() - t0) / 1000);
     renderer.render(scene, camera);
   }
 
@@ -437,5 +486,5 @@ export function createRenderer(canvas) {
     camera.updateProjectionMatrix();
   }
 
-  return { setMoment, render, resize };
+  return { setMoment, setVariant, render, resize };
 }

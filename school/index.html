@@ -28,6 +28,7 @@
     <div class="hud-tr">
       <button class="chip" id="btn-assist" title="Assist level (G)"></button>
       <button class="chip" id="btn-cam" title="Camera (V)"></button>
+      <button class="chip" id="btn-world" title="World (B)"></button>
       <button class="chip icon" id="btn-voice" title="Instructor voice (N)"></button>
       <button class="chip icon" id="btn-sound" title="Engine sound (M)"></button>
       <button class="chip" id="btn-exit" title="Back to lessons (Esc)">Exit</button>
@@ -52,6 +53,10 @@
         <div class="rpm">
           <div class="rpm-bar"><div class="rpm-fill" id="rpm-fill"></div><div class="rpm-idle"></div></div>
           <div class="rpm-label"><span id="rpm">0</span> rpm</div>
+        </div>
+        <div class="steerbar" title="Steering wheel angle. Hold the wheel straight and press Z (or set centre) to make that straight ahead.">
+          <div class="steer-track"><div class="steer-mid"></div><div class="steer-dot" id="steer-dot"></div></div>
+          <div class="steer-label"><span id="steer-deg">0°</span><button class="steer-zero" id="btn-zero">set centre (Z)</button></div>
         </div>
       </div>
       <div class="hud-hint" id="hud-hint">✕ / R retry · Esc exit</div>
@@ -112,6 +117,7 @@
         </div>
         <div class="row">
           <button class="chip" id="ladder-gearbox" title="Switch between manual and automatic"></button>
+          <select class="chip" id="ladder-voice" title="Instructor voice. For the most natural sound, pick one marked Premium, Enhanced, Natural or Google."></select>
           <button class="chip" id="ladder-wheel"></button>
           <button class="chip" id="ladder-reset" title="Clear progress">Reset</button>
         </div>

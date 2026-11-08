@@ -4,7 +4,7 @@ import { createSim, stepSim, shiftGear, runReference, roadOf, DT, FRAME_DT } fro
 import { pointAt, LANE_CENTER } from './road.js';
 import { CAR } from './physics.js';
 import { createInput } from './input.js';
-import { createRenderer } from './render.js';
+import { createRenderer, VARIANTS } from './render.js';
 import { createAudio } from './audio.js';
 import { createChart } from './chart.js';
 import { createSession } from './session.js';
@@ -16,10 +16,11 @@ const kmh = v => Math.round(Math.abs(v) * 3.6);
 
 const input = createInput();
 const audio = createAudio();
-const view = createRenderer($('#view'));
 const settings = loadSettings();
+const view = createRenderer($('#view'), settings.world);
 audio.voice = settings.voice;
 audio.sound = settings.sound;
+audio.setVoice(settings.voiceName);
 let progress = loadProgress();
 
 // The ladder for the chosen gearbox (manual or automatic).
@@ -271,6 +272,30 @@ function openLadder() {
   ol.appendChild(li);
 }
 $('#ladder-wheel').onclick = () => openSetup();
+// Instructor voice picker: the best-sounding voice is chosen by default; the learner can override it.
+function fillVoices() {
+  const sel = $('#ladder-voice');
+  const vs = audio.voices();
+  sel.hidden = !vs.length;
+  const cur = audio.current();
+  sel.innerHTML = '';
+  for (const v of vs) {
+    const o = document.createElement('option');
+    o.value = v.name;
+    o.textContent = 'Voice: ' + v.name.replace(/^(Microsoft|Google)\s+/, '').replace(/\s*\(.*?\)\s*/g, ' ').replace(/ - English.*$/, '').trim() + ` (${v.lang})`;
+    o.selected = v.name === cur;
+    sel.appendChild(o);
+  }
+}
+audio.onvoices = fillVoices;
+fillVoices();
+$('#ladder-voice').onchange = e => {
+  settings.voiceName = e.target.value;
+  audio.setVoice(settings.voiceName);
+  saveSettings(settings);
+  audio.say('Hello. I will be your instructor today.');
+};
+
 $('#ladder-gearbox').onclick = () => {
   settings.transmission = settings.transmission === 'auto' ? 'manual' : 'auto';
   saveSettings(settings);
@@ -416,7 +441,7 @@ function tickGetset(dt, inp) {
   }
   const si = app.snap?.input;
   const ghostPed = si ? { clu: si.clutch, brk: si.brake, thr: si.throttle } : null;
-  updateHud({ ...f, thr: inp.throttle, brk: inp.brake, clu: inp.clutch }, ghostPed, assist() === 'full' || !!app.snap);
+  updateHud({ ...f, thr: inp.throttle, brk: inp.brake, clu: inp.clutch, steer: inp.steer }, ghostPed, assist() === 'full' || !!app.snap);
   audio.engine(f.rpm, inp.throttle);
   app.viewState = driveView(f);
 }
@@ -893,6 +918,7 @@ function syncChips() {
   $('#btn-assist').classList.toggle('on', assist() !== 'off');
   $('#btn-exit').textContent = app.practice ? 'Finish' : 'Exit';
   $('#btn-cam').textContent = settings.camera === 'cockpit' ? 'View: driver' : 'View: chase';
+  $('#btn-world').textContent = 'World: ' + (VARIANTS[settings.world] || VARIANTS.town).label.toLowerCase();
   $('#btn-voice').textContent = settings.voice ? 'Voice on' : 'Voice off';
   $('#btn-voice').classList.toggle('on', settings.voice);
   $('#btn-sound').textContent = settings.sound ? 'Sound on' : 'Sound off';
@@ -907,10 +933,29 @@ function cycleAssist() {
   showCue(ASSIST_LABEL[next], false, 1.5);
 }
 function toggleCam() { settings.camera = settings.camera === 'cockpit' ? 'chase' : 'cockpit'; saveSettings(settings); syncChips(); }
+function cycleWorld() {
+  const names = Object.keys(VARIANTS);
+  settings.world = names[(names.indexOf(settings.world) + 1) % names.length];
+  view.setVariant(settings.world);
+  saveSettings(settings); syncChips();
+}
 function toggleVoice() { settings.voice = audio.voice = !settings.voice; if (!settings.voice) audio.hush(); saveSettings(settings); syncChips(); }
 function toggleSound() { settings.sound = audio.sound = !settings.sound; saveSettings(settings); syncChips(); }
 $('#btn-assist').onclick = cycleAssist;
 $('#btn-cam').onclick = toggleCam;
+$('#btn-world').onclick = cycleWorld;
+// Make wherever the wheel is now "straight ahead" (the browser can't self-centre a G29) and save it.
+function zeroSteer() {
+  const pad = input.getPad();
+  if (!pad || input.mode !== 'wheel') { showCue('Connect the wheel first: press any wheel button.', true, 2); return; }
+  const m = input.effective();
+  const raw = pad.axes[m.steer.axis] ?? 0;
+  const was = Math.round((raw - m.steer.center) * m.steer.sign * 450);
+  m.steer.center = raw;
+  input.save(m);
+  showCue(was ? `Steering centre set (was ${Math.abs(was)}° ${was < 0 ? 'left' : 'right'}).` : 'Steering centre set.', false, 2);
+}
+$('#btn-zero').onclick = zeroSteer;
 $('#btn-voice').onclick = toggleVoice;
 $('#btn-sound').onclick = toggleSound;
 $('#btn-exit').onclick = () => exitToBrief();
@@ -963,6 +1008,12 @@ function updateHud(f, ghost, assistOn) {
   fill.style.width = `${clamp(rpm / 6500, 0, 1) * 100}%`;
   fill.className = 'rpm-fill' + (!f.running ? ' off' : rpm < 700 ? ' low' : rpm > 3800 ? ' high' : '');
   $('#rpm').textContent = f.running ? Math.round(rpm / 10) * 10 : 'off';
+  // Wheel angle (900° lock): the dot spans ±90°, the label gives the exact angle.
+  const deg = (f.steer || 0) * 450;
+  const dot = $('#steer-dot');
+  dot.style.left = `${50 + clamp(deg / 90, -1, 1) * 50}%`;
+  dot.classList.toggle('off', Math.abs(deg) > 3);
+  $('#steer-deg').textContent = Math.abs(deg) < 0.5 ? 'straight' : `${Math.round(Math.abs(deg))}° ${deg < 0 ? 'left' : 'right'}`;
   for (const k of ['clu', 'brk', 'thr']) {
     pedEls[k].fill.style.height = `${clamp(f[k], 0, 1) * 100}%`;
     if (ghost && assistOn) { pedEls[k].ghost.style.display = 'block'; pedEls[k].ghost.style.bottom = `${clamp(ghost[k], 0, 1) * 100}%`; }
@@ -980,6 +1031,8 @@ addEventListener('keydown', e => {
   if (!['getset', 'drive', 'demo', 'ending', 'repgap'].includes(app.mode)) return;
   if (e.code === 'KeyG') cycleAssist();
   if (e.code === 'KeyV' || e.code === 'KeyC') toggleCam();
+  if (e.code === 'KeyB') cycleWorld();
+  if (e.code === 'KeyZ') zeroSteer();
   if (e.code === 'KeyN') toggleVoice();
   if (e.code === 'KeyM') toggleSound();
 });
