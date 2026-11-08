@@ -339,8 +339,48 @@ const hill = {
   demo: { stopped: 'Brake on, clutch down.', launch: 'Gas, bite point. Feel it pull, then release the brake.', drive: 'Brake off. Lift the clutch, more gas.' },
 };
 
+// Free drive: a town loop (left-hand corners, a small flyover hump), repeated so you can keep going.
+const R = 25, ARC = R * Math.PI / 2;
+const LAP = [
+  { len: 160 }, { len: ARC, turn: -90 },
+  { len: 60 }, { len: 50, grade: 0.06 }, { len: 30, grade: 0 }, { len: 50, grade: -0.06 }, { len: 20, grade: 0 },
+  { len: ARC, turn: -90 },
+  { len: 160 }, { len: ARC, turn: -90 },
+  { len: 210 }, { len: ARC, turn: -90 },
+];
+const LAP_LEN = LAP.reduce((a, g) => a + Math.max(1, Math.round(g.len / 0.5)) * 0.5, 0);
+export const FREE = {
+  id: 'free-drive',
+  n: 6,
+  free: true,
+  continuous: true,
+  title: 'Free drive',
+  skill: 'Just drive',
+  why: 'Put it all together at your own pace. No score and no timer: the instructor only speaks up when something goes wrong.',
+  goal: 'Drive the town loop at your own pace. Keep left.',
+  steps: [
+    'Pull away when you are ready.',
+    'Keep left. Slow down before the corners. There is a small flyover on one side.',
+    'Press Esc or Finish whenever you like. You can download the drive afterwards.',
+  ],
+  auto: { pose: [{ pedal: 'brk', min: 0.3, label: 'Brake held (middle pedal)' }] },
+  praise: 'Nice drive.',
+  road: { segments: Array.from({ length: 40 }, () => LAP).flat() }, // ~36 km of laps
+  lapLength: LAP_LEN,
+  start: { s: 10, v: 0, gear: 1 },
+  pose: [CLUTCH_DOWN, BRAKE_ON],
+  zones: [{ type: 'speedSign', s: 25, limit: 30 }, { type: 'speedSign', s: 160 + ARC + 20, limit: 30 }],
+  align: 'time',
+  timeLimit: 4 * 3600,
+  detect: ['lurch', 'harsh', 'lane'],
+  end: (f, sim) => (f.s > sim.road.length - 60 ? { completed: true, reason: 'End of the road' } : null),
+  criteria: [],
+  cues: [],
+  drive: { target: () => 8 },
+};
+
 export const MOMENTS = [movingOff, stopLine, bend, traffic, hill];
-for (const m of MOMENTS) { m.transmission = 'manual'; m.expert = driver(m.drive); }
+for (const m of [...MOMENTS, FREE]) { m.transmission = 'manual'; m.expert = driver(m.drive); }
 
 // The same moment for an automatic gearbox: clutch-only rules dropped, automatic wording merged in.
 export function forTransmission(m, trans) {

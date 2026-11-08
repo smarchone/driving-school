@@ -197,7 +197,8 @@ export function createRenderer(canvas) {
     if (world) { scene.remove(world); world.traverse(o => { o.geometry?.dispose?.(); }); }
     world = new THREE.Group();
     assistObjs = [];
-    const L = road.length;
+    // A looping road is stored as several identical laps; draw one.
+    const L = Math.min(road.length, moment.lapLength ?? road.length);
     const add = (geo, color, opts = {}) => {
       const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, ...opts }));
       world.add(m);
@@ -213,12 +214,19 @@ export function createRenderer(canvas) {
     for (let s = 2; s < L - 3; s += 9) add(ribbon(road, -0.07, 0.07, s, s + 3, 0.02, 0.5), white);
 
     // Flyover: concrete sides and parapets wherever the road leaves the ground.
-    const elevated = road.pts.some(p => p.y > 0.3);
-    if (elevated) {
-      const concrete = 0xb9b4aa;
+    const ranges = [];
+    for (const p of road.pts) {
+      if (p.s > L) break;
+      const up = p.y > 0.2;
+      const last = ranges[ranges.length - 1];
+      if (up && last && last[1] >= p.s - 1) last[1] = p.s;
+      else if (up) ranges.push([p.s, p.s]);
+    }
+    for (const [a, b] of ranges) {
+      const s0 = Math.max(0, a - 4), s1 = Math.min(L, b + 4);
       for (const d of [-HALF - SHOULDER, HALF + SHOULDER]) {
-        add(wall(road, d, 0, 0, L, true), concrete);
-        add(wall(road, d, 0.85, 0, L, false), 0xd6d1c6);
+        add(wall(road, d, 0, s0, s1, true), 0xb9b4aa);
+        add(wall(road, d, 0.85, s0, s1, false), 0xd6d1c6);
       }
     }
 

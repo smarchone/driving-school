@@ -35,9 +35,11 @@ export function createInput() {
   // 1 = as configured, -1 = this browser reports it the other way round.
   const orient = { clu: 1, thr: 1, brk: 1 };
   let prevButtons = [];
+  const stored = load();
   const self = {
-    mapping: load() || G29_DEFAULT,
-    custom: !!load(),
+    mapping: stored || G29_DEFAULT,
+    custom: !!stored,
+    source: stored ? 'browser' : 'default', // 'browser' | 'default'
     mode: 'keyboard',
     pad: null,
     awake,
@@ -123,17 +125,37 @@ export function createInput() {
     return { ...out, ev };
   };
 
-  self.useMapping = m => { self.mapping = m; self.custom = true; orient.clu = orient.thr = orient.brk = 1; saveMapping(m); };
-  // Reverse every pedal (for browsers that report them the other way up) and remember it.
-  self.flipPedals = () => {
+  // The mapping as it is being read right now, with any learned pedal direction baked in.
+  self.effective = () => {
     const m = JSON.parse(JSON.stringify(self.mapping));
     for (const k of ['clu', 'thr', 'brk']) {
       if (!m[k]) continue;
-      m[k].rest = -m[k].rest * orient[k];
-      m[k].full = -m[k].full * orient[k];
+      m[k].rest *= orient[k];
+      m[k].full *= orient[k];
     }
-    self.useMapping(m);
+    return m;
   };
-  self.resetMapping = () => { self.mapping = G29_DEFAULT; self.custom = false; clearMapping(); };
+
+  // Save a mapping in this browser (localStorage). No server needed, so it works on static hosting.
+  self.save = (m = self.effective()) => {
+    const saved = { ...m, savedAt: new Date().toISOString(), padId: self.getPad()?.id || m.padId || null };
+    self.mapping = saved;
+    self.custom = true;
+    self.source = 'browser';
+    orient.clu = orient.thr = orient.brk = 1;
+    saveMapping(saved);
+    return saved;
+  };
+
+  self.useMapping = m => self.save(m);
+  // Reverse one pedal (pedals can report in different directions, even on the same wheel) and save.
+  self.flipPedal = k => {
+    const m = self.effective();
+    if (!m[k]) return self.mapping;
+    m[k].rest = -m[k].rest;
+    m[k].full = -m[k].full;
+    return self.save(m);
+  };
+  self.resetMapping = () => { self.mapping = G29_DEFAULT; self.custom = false; self.source = 'default'; clearMapping(); };
   return self;
 }

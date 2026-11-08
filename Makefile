@@ -13,5 +13,5 @@ open:
 
 .PHONY: school
 school:
-	@echo "Driving School M0: http://$(HOST):$(PORT)/school/"
+	@echo "Driving School: http://$(HOST):$(PORT)/school/"
 	python3 -m http.server $(PORT) --bind $(HOST)

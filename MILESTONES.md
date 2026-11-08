@@ -14,6 +14,7 @@ M0 — DONE (school/)
 - [x] G29 defaults + calibration wizard, keyboard fallback
 - [x] gearbox: manual or automatic (torque converter, auto shifts), per-gearbox lessons + progress
 
+- [x] free drive: town loop, no score, instructor only on mistakes, drive summary + session log
 - [x] practice sessions: timed reps, per-rep coaching, help fades with a clean streak, end-of-session trend
 
 M1 — fading assist (started: per-session fading in practice; next: remember it per moment across sessions)

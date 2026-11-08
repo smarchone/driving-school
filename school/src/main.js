@@ -1,5 +1,5 @@
 // Driving School M0: brief -> (demo) -> get set -> drive with assist -> debrief playback -> retry.
-import { MOMENTS, lessons, practiceOf, practiceMins } from './moments.js';
+import { MOMENTS, FREE, forTransmission, lessons, practiceOf, practiceMins } from './moments.js';
 import { createSim, stepSim, shiftGear, runReference, roadOf, DT, FRAME_DT } from './sim.js';
 import { pointAt, LANE_CENTER } from './road.js';
 import { CAR } from './physics.js';
@@ -7,6 +7,7 @@ import { createInput } from './input.js';
 import { createRenderer } from './render.js';
 import { createAudio } from './audio.js';
 import { createChart } from './chart.js';
+import { createSession } from './session.js';
 import { loadProgress, recordAttempt, recordPractice, resetProgress, loadSettings, saveSettings } from './progress.js';
 
 const $ = s => document.querySelector(s);
@@ -26,11 +27,40 @@ const LESSONS = () => lessons(settings.transmission);
 
 const refs = new Map();
 function refOf(m) {
+  // Free drive has no "good run" to compare against: just its first frame, so code that reads ref still works.
+  if (m.free) return { frames: [createSim(m).frames[0]], report: null, log: [] };
   const key = m.id + (m.continuous ? '#practice' : '');
   if (!refs.has(key)) refs.set(key, runReference(m));
   return refs.get(key);
 }
+// ---------------------------------------------------------------- session log
+// Everything a lesson visit produces lands here: runs, reps, instructor findings, raw telemetry.
+// It is the plug-in point for analysis and future LLM agents: window.ds.session.
+let session = null;
+const lessonId = m => (m.base || m).id.replace('@auto', '');
+function newSession(kind) {
+  const m = app.practice?.base || app.moment;
+  session = createSession({
+    lesson: lessonId(m), lessonTitle: m.title, gearbox: m.transmission, kind,
+    practiceMins: kind === 'practice' ? practiceMins(m) : null,
+    input: input.mode === 'wheel' ? (input.getPad()?.id || 'wheel') : 'keyboard',
+  });
+  window.ds.session = session;
+  return session;
+}
+function exportSession() {
+  if (!session) return;
+  const data = { ...session.toJSON(), summary: session.summary() };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `driving-school-${session.meta.lesson}-${session.meta.startedAt.slice(0, 19).replace(/[:T]/g, '-')}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 // Assist level in force: a practice session adapts it rep by rep; otherwise the learner's setting.
+const freeLesson = () => forTransmission(FREE, settings.transmission);
 const assist = () => (app.practice ? app.practice.assist : settings.assist);
 
 const app = {
@@ -68,25 +98,53 @@ function openSetup() {
   app.orbit = pointAt(roadOf(m), m.start.s, LANE_CENTER);
   app.orbitCar = refOf(m).frames[0];
 }
-$('#setup-go').onclick = () => { audio.unlock(); openLadder(); };
+// Confirming the bars look right saves exactly what you checked, so next time there is nothing to redo.
+$('#setup-go').onclick = () => {
+  audio.unlock();
+  if (input.getPad() && input.mode === 'wheel') input.save();
+  openLadder();
+};
 $('#setup-kb').onclick = () => { audio.unlock(); input.mode = 'keyboard'; openLadder(); };
 $('#setup-cal').onclick = () => startWizard();
-$('#setup-flip').onclick = () => { input.flipPedals(); $('#setup-note').textContent = 'Pedals flipped and saved. Released should read 0, pressed should fill the bar.'; };
+const PEDAL_LABEL = { clu: 'Clutch', brk: 'Brake', thr: 'Gas' };
+document.querySelectorAll('[data-flip]').forEach(b => {
+  b.onclick = () => {
+    const k = b.dataset.flip;
+    input.flipPedal(k);
+    app.pedalFull = {};
+    $('#setup-note').textContent = `${PEDAL_LABEL[k]} reversed and saved. Released should be empty, pressed should fill the bar.`;
+  };
+});
+
+function calibrationNote() {
+  const when = input.mapping.savedAt ? ` (saved ${new Date(input.mapping.savedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })})` : '';
+  return input.custom ? `Using your saved calibration${when}.`
+    : 'Not calibrated yet: press each pedal, check the bars, then continue to save.';
+}
 
 function updateSetup() {
   const pad = input.getPad();
   const inp = app.lastInput;
   $('#setup-status').textContent = pad
-    ? `Found: ${pad.id.replace(/\(.*?\)/g, '').trim() || 'wheel'}. ${input.custom ? 'Using your calibration.' : 'Using G29 defaults.'}`
+    ? `Found: ${pad.id.replace(/\(.*?\)/g, '').trim() || 'wheel'}. ${calibrationNote()}`
     : 'Press any button on your wheel so the browser can see it. No wheel? Use the keyboard.';
   if (inp) {
     $('#lv-steer').style.left = `${50 + inp.steer * 50}%`;
     $('#lv-clu').style.width = `${inp.clutch * 100}%`;
     $('#lv-brk').style.width = `${inp.brake * 100}%`;
     $('#lv-thr').style.width = `${inp.throttle * 100}%`;
-    // Nobody rests on gas and brake together: both near full means the pedals read upside down.
-    app.flipT = inp.throttle > 0.9 && inp.brake > 0.9 ? (app.flipT || 0) + 1 : 0;
-    $('#setup-warn').hidden = !(app.flipT > 30);
+    // A pedal sitting at full for a couple of seconds is almost certainly reading upside down.
+    app.pedalFull = app.pedalFull || {};
+    const vals = { clu: inp.clutch, brk: inp.brake, thr: inp.throttle };
+    const suspects = [];
+    for (const k of ['clu', 'brk', 'thr']) {
+      app.pedalFull[k] = vals[k] > 0.95 ? (app.pedalFull[k] || 0) + 1 : 0;
+      const sus = app.pedalFull[k] > 120;
+      document.querySelector(`.live-row[data-p=${k}]`).classList.toggle('suspect', sus);
+      if (sus) suspects.push(PEDAL_LABEL[k]);
+    }
+    $('#setup-warn').hidden = !suspects.length;
+    if (suspects.length) $('#setup-warn-text').textContent = `${suspects.join(' and ')} ${suspects.length > 1 ? 'read' : 'reads'} full while not pressed? Click Reverse next to ${suspects.length > 1 ? 'each' : 'it'}.`;
     if (inp.ev.shift) $('#lv-gear').textContent = inp.ev.shift > 0 ? 'gear up ✓' : 'gear down ✓';
   }
 }
@@ -126,10 +184,10 @@ function wizNext(result) {
   w.i++;
   if (w.i >= WIZ.length) {
     input.useMapping(w.map);
+    $('#setup-note').textContent = 'Saved. Check the bars follow your wheel and pedals.';
     app.wiz = null;
     $('#wizard').hidden = true;
     $('#setup-actions').hidden = false;
-    $('#setup-note').textContent = 'Saved. Check the bars follow your wheel and pedals.';
     return;
   }
   wizStep();
@@ -184,7 +242,7 @@ function openLadder() {
   view.setMoment(nu, roadOf(nu));
   app.orbit = pointAt(roadOf(nu), nu.start.s, LANE_CENTER);
   app.orbitCar = refOf(nu).frames[0];
-  $('#ladder-wheel').textContent = input.mode === 'wheel' ? 'Wheel ✓ · setup' : 'Keyboard · wheel setup';
+  $('#ladder-wheel').textContent = input.custom ? 'Wheel calibrated ✓ · setup' : input.mode === 'wheel' ? 'Wheel · setup' : 'Keyboard · wheel setup';
   $('#ladder-gearbox').textContent = settings.transmission === 'auto' ? 'Gearbox: automatic' : 'Gearbox: manual';
   const ol = $('#ladder');
   ol.innerHTML = '';
@@ -201,6 +259,16 @@ function openLadder() {
     li.onclick = () => { audio.unlock(); openBrief(m); };
     ol.appendChild(li);
   });
+  // Free drive: always open, outside the ladder.
+  const fm = freeLesson();
+  const fp = progress[fm.id]?.free;
+  const li = document.createElement('li');
+  li.className = 'rung free';
+  li.innerHTML = `<div class="num">∞</div><div><div class="t"></div><div class="s"></div></div><div class="st">${fp ? `${(fp.km || 0).toFixed(1)} km driven` : 'Open'}</div>`;
+  li.querySelector('.t').textContent = fm.title;
+  li.querySelector('.s').textContent = 'Just drive the town loop, at your own pace';
+  li.onclick = () => { audio.unlock(); openBrief(fm); };
+  ol.appendChild(li);
 }
 $('#ladder-wheel').onclick = () => openSetup();
 $('#ladder-gearbox').onclick = () => {
@@ -229,12 +297,22 @@ function openBrief(m) {
   for (const s of m.steps) { const li = document.createElement('li'); li.textContent = s; $('#brief-steps').appendChild(li); }
   $('#brief-pass').innerHTML = '';
   for (const c of m.criteria) { const li = document.createElement('li'); li.textContent = c.label; $('#brief-pass').appendChild(li); }
-  $('#brief-practice').textContent = `Practise · ${practiceMins(m)} min →`;
+  $('#brief-practice').textContent = m.free ? 'Drive →' : `Practise · ${practiceMins(m)} min →`;
+  $('#brief-demo').hidden = !!m.free;
+  $('#brief-drive').hidden = !!m.free;
+  $('#brief-eyebrow').textContent = m.free ? `Free drive · ${m.transmission === 'auto' ? 'automatic' : 'manual'}` : $('#brief-eyebrow').textContent;
+  $('#brief-pass-h').textContent = m.free ? 'Your instructor' : 'A clean rep';
+  if (m.free) {
+    $('#brief-pass').innerHTML = '';
+    for (const t of ['Stays quiet unless something goes wrong', 'No score, no timer', 'Every drive is logged; download it at the end']) {
+      const li = document.createElement('li'); li.textContent = t; $('#brief-pass').appendChild(li);
+    }
+  }
   audio.say(`${m.title}. ${m.goal}`);
 }
 $('#brief-demo').onclick = () => startDemo();
-$('#brief-drive').onclick = () => { app.practice = null; startGetset(); };
-$('#brief-practice').onclick = () => startPractice();
+$('#brief-drive').onclick = () => { app.practice = null; newSession('test'); startGetset(); };
+$('#brief-practice').onclick = () => (app.moment.free ? startFreeDrive() : startPractice());
 $('#brief-back').onclick = () => openLadder();
 
 // ---------------------------------------------------------------- demo (pre-viz)
@@ -281,6 +359,9 @@ function startGetset(snap = null) {
   app.ref = refOf(m);
   app.sim = createSim(m, snap);
   app.snap = snap;
+  if (!session || session.meta.lesson !== lessonId(m) || session.meta.gearbox !== m.transmission) newSession(app.practice ? 'practice' : 'test');
+  if (!session.ref) session.ref = { note: 'the good run, same frame shape', frames: app.ref.frames };
+  session.beginRun(app.sim, snap ? 'retry-from-here' : app.practice ? (app.practice.continuous ? 'practice-continuous' : 'practice-rep') : 'test');
   app.mode = 'getset';
   app.poseHeld = 0;
   app.countdown = null;
@@ -325,7 +406,7 @@ function tickGetset(dt, inp) {
     if (wrong) warn.textContent = `That's the ${PEDAL_NAME[wrong]}. You need: ${pose.map(p => p.label).join(' and ')}.`;
     if (vals.thr > 0.9 && vals.brk > 0.9) {
       warn.hidden = false;
-      warn.textContent = 'Gas and brake both read full. Your pedals look reversed: press Esc, open wheel setup and click Flip pedals.';
+      warn.textContent = 'Gas and brake both read full. A pedal looks reversed: press Esc, open wheel setup and click Reverse next to it.';
     }
     if (app.poseHeld > 0.5) beginDrive();
   } else {
@@ -393,7 +474,7 @@ function ghostPedalsFor(f) {
   return { clu: r[i].clu, brk: r[i].brk, thr: r[i].thr };
 }
 function driveView(f) {
-  const showGhost = assist() === 'full';
+  const showGhost = assist() === 'full' && !app.moment.free;
   const g = showGhost ? app.ref.frames[refIndexTime(f.t)] : null;
   return { car: f, ghost: g, leadS: f.leadS, leadBraking: f.leadV !== null && f.leadV < 0.4, cam: settings.camera, assist: showGhost, stopMark: showGhost ? stopMarkFor(f) : null };
 }
@@ -433,15 +514,18 @@ function tickDrive(dt, inp) {
     if (assist() !== 'off') { showCue(c.text, c.priority, 2.8); audio.say(c.text, c.priority); }
   }
   const f = sim.frames[sim.frames.length - 1];
+  session.sync(sim, app.practice && !app.practice.continuous ? app.practice.reps.length : null);
+  if (sim.ended) session.endRun(sim.report);
   advanceSteps(f);
   if (app.practice) {
     updatePracticeBar();
     if (app.practice.continuous) {
-      segmentReps(f);
+      if (!app.practice.free) segmentReps(f);
       if (app.clock >= app.practice.endsAt) return endPractice();
     }
   }
-  updateHud(f, assist() === 'full' ? ghostPedalsFor(f) : null, assist() === 'full');
+  const ghostOn = assist() === 'full' && !app.moment.free;
+  updateHud(f, ghostOn ? ghostPedalsFor(f) : null, ghostOn);
   $('#stall').hidden = f.running;
   audio.engine(f.rpm, inp.throttle);
   app.viewState = driveView(f);
@@ -472,13 +556,26 @@ function startPractice() {
     startedAt: app.clock, endsAt: app.clock + practiceMins(base) * 60, phase: 'wait', stillT: 0,
   };
   app.moment = m;
+  newSession('practice');
+  startGetset();
+}
+
+function startFreeDrive() {
+  audio.unlock();
+  const m = app.moment;
+  app.practice = {
+    base: m, free: true, continuous: true, assist: settings.assist,
+    reps: [], streak: 0, fails: 0, bestStreak: 0, offStreak: 0, bestStreakNoAssist: 0,
+    startedAt: app.clock, endsAt: Infinity,
+  };
+  newSession('free');
   startGetset();
 }
 
 function repFromReport(r) {
   const checks = r.criteria.map(c => ({ id: c.id, label: c.label, ok: c.ok, tip: c.tip }));
   if (!r.completed) checks.push({ id: 'finish', label: 'Finished the moment', ok: false, tip: r.tip });
-  return { clean: r.passed, checks, tip: r.tip };
+  return { clean: r.passed, checks, tip: r.tip, stats: r.stats };
 }
 
 // Continuous traffic: a rep runs from the auto moving off until you are stopped behind it again.
@@ -509,7 +606,7 @@ function closeRep(a, b, t0) {
   const m = app.moment, auto = m.transmission === 'auto';
   const checks = m.repChecks.filter(c => !(auto && c.manual))
     .map(c => ({ id: c.id, label: c.label, ok: !!c.test(R), tip: auto && c.autoTip ? c.autoTip : c.tip }));
-  repDone({ clean: checks.every(c => c.ok), checks, R });
+  repDone({ clean: checks.every(c => c.ok), checks, R, range: [a, b] });
 }
 
 const ORDER = ['full', 'cues', 'off'];
@@ -517,6 +614,9 @@ function repDone(rep) {
   const P = app.practice;
   const prev = P.reps[P.reps.length - 1];
   P.reps.push({ ...rep, assist: P.assist });
+  const run = session.runs[session.runs.length - 1];
+  const [fs, fe] = rep.range ? [run.frameStart + rep.range[0], run.frameStart + rep.range[1] + 1] : [run.frameStart, run.frameEnd];
+  session.addRep({ ...rep, assist: P.assist }, fs, fe);
   let line;
   if (rep.clean) {
     P.streak++; P.fails = 0;
@@ -554,6 +654,15 @@ function updatePracticeBar() {
   const P = app.practice;
   $('#pbar').hidden = !P;
   if (!P) return;
+  if (P.free) {
+    const el = app.clock - P.startedAt;
+    const fr = app.sim?.frames;
+    const km = fr && fr.length ? (fr[fr.length - 1].s - fr[0].s) / 1000 : 0;
+    $('#p-time').textContent = `${Math.floor(el / 60)}:${String(Math.floor(el % 60)).padStart(2, '0')}`;
+    $('#p-rep').textContent = `${km.toFixed(2)} km`;
+    $('#p-dots').innerHTML = '';
+    return;
+  }
   const left = Math.max(0, P.endsAt - app.clock);
   $('#p-time').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')} left`;
   $('#p-rep').textContent = `${P.reps.length} reps · ${P.reps.filter(r => r.clean).length} clean`;
@@ -582,11 +691,19 @@ function endPractice() {
   audio.hush();
   app.practice = null;
   app.moment = P.base;
+  if (session) session.meta.endedAt = new Date().toISOString();
   hud(false);
   progress = { ...progress };
+  if (P.free) return freeSummary(P);
   recordPractice(progress, P.base.id, P);
   app.mode = 'summary';
   show('summary');
+  setSummaryLabels('reps', 'clean', 'best streak');
+  $('#sum-eyebrow').textContent = 'Practice done';
+  $('#sum-trend-h').textContent = 'How it changed';
+  $('#sum-dots').hidden = false;
+  $('#sum-again').textContent = 'Keep practising';
+  $('#sum-test').hidden = false;
   const n = P.reps.length, mins = Math.max(1, Math.round((app.clock - P.startedAt) / 60));
   $('#sum-title').textContent = `${mins} min of ${P.base.title.toLowerCase()}`;
   $('#sum-reps').textContent = n;
@@ -611,8 +728,47 @@ function endPractice() {
   $('#sum-next').textContent = tip || (late.length ? 'Clean at the end. Next time, start with assists off, or test yourself.' : 'Keep going: reps are how this gets easy.');
   audio.say(`${n} reps, ${P.reps.filter(r => r.clean).length} clean. ${$('#sum-next').textContent}`);
 }
-$('#sum-again').onclick = () => startPractice();
-$('#sum-test').onclick = () => { app.practice = null; startGetset(); };
+function setSummaryLabels(a, b, c) {
+  const spans = document.querySelectorAll('.stats span');
+  [a, b, c].forEach((t, i) => { spans[i].textContent = t; });
+}
+
+function freeSummary(P) {
+  const fr = app.sim.frames;
+  const km = fr.length ? (fr[fr.length - 1].s - fr[0].s) / 1000 : 0;
+  const secs = Math.max(1, app.clock - P.startedAt);
+  const id = P.base.id;
+  const prev = progress[id]?.free || { km: 0, drives: 0 };
+  progress[id] = { ...(progress[id] || { attempts: 0, passed: false }), free: { km: prev.km + km, drives: prev.drives + 1 } };
+  try { localStorage.setItem('ds.progress.v1', JSON.stringify(progress)); } catch { /* storage unavailable */ }
+  app.mode = 'summary';
+  show('summary');
+  $('#sum-title').textContent = `Free drive · ${Math.max(1, Math.round(secs / 60))} min`;
+  setSummaryLabels('km', 'km/h average', 'findings');
+  $('#sum-eyebrow').textContent = 'Drive done';
+  $('#sum-trend-h').textContent = 'What came up';
+  $('#sum-reps').textContent = km.toFixed(1);
+  $('#sum-clean').textContent = Math.round(km / (secs / 3600));
+  const evs = session ? session.events : [];
+  $('#sum-streak').textContent = evs.length;
+  $('#sum-dots').hidden = true;
+  // What came up on the drive, most frequent first.
+  const by = {};
+  for (const e of evs) (by[e.title] = by[e.title] || { n: 0, tip: e.tip, major: e.severity === 'major' }).n++;
+  const rows = Object.entries(by).sort((a, b) => b[1].n - a[1].n);
+  $('#sum-trend').innerHTML = rows.length
+    ? rows.map(([t, x]) => `<li class="${x.major ? 'down' : ''}"><span>${t}</span><b>×${x.n}</b></li>`).join('')
+    : '<li class="up"><span>Nothing came up</span><b>clean drive</b></li>';
+  $('#sum-next').textContent = rows.length ? rows[0][1].tip : 'Clean drive. Next time, try it with assists off.';
+  $('#sum-again').textContent = 'Drive again';
+  $('#sum-test').hidden = true;
+  audio.say(`${km.toFixed(1)} kilometres. ${$('#sum-next').textContent}`);
+}
+
+$('#sum-again').onclick = () => (app.moment.free ? startFreeDrive() : startPractice());
+$('#sum-test').onclick = () => { app.practice = null; newSession('test'); startGetset(); };
+$('#sum-export').onclick = () => exportSession();
+$('#db-export').onclick = () => exportSession();
 $('#sum-back').onclick = () => openLadder();
 
 function tickEnding(dt) {
@@ -721,7 +877,7 @@ function tickDebrief(dt) {
 // ---------------------------------------------------------------- HUD helpers
 function setHudText(goal) {
   const m = app.moment;
-  $('#hud-eyebrow').textContent = `Moment ${m.n} · ${m.skill}`;
+  $('#hud-eyebrow').textContent = m.free ? 'Free drive · just drive' : `Moment ${m.n} · ${m.skill}`;
   $('#hud-title').textContent = m.title;
   $('#hud-goal').textContent = goal;
   syncChips();
@@ -836,8 +992,8 @@ function handleEvents(ev) {
   }
   switch (app.mode) {
     case 'ladder': if (ev.ok) openBrief(nextUp()); break;
-    case 'brief': if (ev.ok) startPractice(); break;
-    case 'summary': if (ev.ok) startPractice(); break;
+    case 'brief': if (ev.ok) (app.moment.free ? startFreeDrive() : startPractice()); break;
+    case 'summary': if (ev.ok) (app.moment.free ? startFreeDrive() : startPractice()); break;
     case 'demo': if (ev.ok) { audio.engine(0); startGetset(); } break;
     case 'drive': case 'getset': if (ev.retry && !app.practice?.continuous) startGetset(app.snap); break;
     case 'debrief': {
@@ -883,8 +1039,9 @@ function loop(now) {
 function onResize() { view.resize(); }
 addEventListener('resize', onResize);
 onResize();
-openSetup();
+// With a saved calibration, go straight to the lessons; otherwise check the wheel first.
+if (input.custom) openLadder(); else openSetup();
 requestAnimationFrame(loop);
 
 // Debug handle for poking at state from the console.
-window.ds = { app, MOMENTS: MOMENTS, settings, input, DT };
+window.ds = { app, MOMENTS: MOMENTS, settings, input, DT, session: null };

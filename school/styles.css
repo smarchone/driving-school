@@ -51,7 +51,10 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 
 /* ---------- setup ---------- */
 .live { display: grid; gap: 10px; margin: 6px 0 12px; }
-.live-row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
+.live-row { display: grid; grid-template-columns: 110px 1fr 84px; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
+.chip.mini { padding: 4px 10px; font-size: 12px; justify-self: end; }
+.live-row.suspect .chip.mini { border-color: var(--clutch); color: var(--clutch); }
+.live-row.suspect .meter { box-shadow: 0 0 0 2px rgba(245,185,66,0.5); }
 .meter { height: 12px; border-radius: 6px; background: rgba(255,255,255,0.07); position: relative; overflow: hidden; }
 .meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ghost); border-radius: 6px; }
 .meter.center i { left: 50%; width: 4px; margin-left: -2px; background: var(--text); }
@@ -215,3 +218,6 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .trend li b { font-variant-numeric: tabular-nums; }
 .trend li small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
 .trend li.up b { color: var(--pass); } .trend li.down b { color: var(--fail); }
+
+.rung.free { margin-top: 10px; border-style: dashed; }
+.rung.free .num { border-color: var(--ghost); color: var(--ghost); font-size: 20px; }

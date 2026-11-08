@@ -70,14 +70,14 @@
       <h1>Let's check your wheel</h1>
       <p class="lede" id="setup-status">Press any button on your wheel so the browser can see it.</p>
       <div class="live" id="live">
-        <div class="live-row"><span>Steering</span><div class="meter center"><i id="lv-steer"></i></div></div>
-        <div class="live-row"><span>Clutch</span><div class="meter"><i id="lv-clu"></i></div></div>
-        <div class="live-row"><span>Brake</span><div class="meter"><i id="lv-brk"></i></div></div>
-        <div class="live-row"><span>Gas</span><div class="meter"><i id="lv-thr"></i></div></div>
-        <div class="live-row"><span>Gear paddles</span><div class="gear-test" id="lv-gear">tap a paddle</div></div>
+        <div class="live-row"><span>Steering</span><div class="meter center"><i id="lv-steer"></i></div><span></span></div>
+        <div class="live-row" data-p="clu"><span>Clutch</span><div class="meter"><i id="lv-clu"></i></div><button class="chip mini" data-flip="clu" title="Use if this bar is full when the pedal is released">Reverse</button></div>
+        <div class="live-row" data-p="brk"><span>Brake</span><div class="meter"><i id="lv-brk"></i></div><button class="chip mini" data-flip="brk" title="Use if this bar is full when the pedal is released">Reverse</button></div>
+        <div class="live-row" data-p="thr"><span>Gas</span><div class="meter"><i id="lv-thr"></i></div><button class="chip mini" data-flip="thr" title="Use if this bar is full when the pedal is released">Reverse</button></div>
+        <div class="live-row"><span>Gear paddles</span><div class="gear-test" id="lv-gear">tap a paddle</div><span></span></div>
       </div>
-      <div class="getset-warn" id="setup-warn" hidden>A pedal reads full while you're not pressing it. Click <b>Flip pedals</b>, or <b>Calibrate my wheel</b>.</div>
-      <p class="small" id="setup-note">Turn the wheel and press each pedal. The bars should follow. If a pedal looks stuck, press it once to wake it up.</p>
+      <div class="getset-warn" id="setup-warn" hidden><span id="setup-warn-text"></span></div>
+      <p class="small" id="setup-note">Turn the wheel and press each pedal. Released = empty bar, pressed = full. If a bar is full while the pedal is released, click <b>Reverse</b> next to it. A pedal that looks stuck needs one press to wake up.</p>
 
       <div class="wizard" id="wizard" hidden>
         <div class="wiz-step" id="wiz-step"></div>
@@ -92,7 +92,6 @@
       <div class="row" id="setup-actions">
         <button class="btn primary" id="setup-go">Looks right, continue</button>
         <button class="btn" id="setup-cal">Calibrate my wheel</button>
-        <button class="btn" id="setup-flip">Flip pedals</button>
         <button class="btn ghost" id="setup-kb">Use keyboard instead</button>
       </div>
       <details class="keys">
@@ -134,7 +133,7 @@
           <ol class="steps" id="brief-steps"></ol>
         </div>
         <div>
-          <h3>A clean rep</h3>
+          <h3 id="brief-pass-h">A clean rep</h3>
           <ul class="checks" id="brief-pass"></ul>
         </div>
       </div>
@@ -172,6 +171,7 @@
           <button class="btn" id="db-here">Retry from here</button>
           <button class="btn" id="db-next" hidden>Next moment →</button>
           <button class="btn ghost" id="db-demo">Watch demo</button>
+          <button class="btn ghost" id="db-export" title="Telemetry, findings and summary as JSON">Download data</button>
           <button class="btn ghost" id="db-back">Lessons</button>
         </div>
       </div>
@@ -181,7 +181,7 @@
   <!-- ===== Practice summary ===== -->
   <section class="screen" data-screen="summary" hidden>
     <div class="card summary">
-      <div class="eyebrow">Practice done</div>
+      <div class="eyebrow" id="sum-eyebrow">Practice done</div>
       <h1 id="sum-title"></h1>
       <div class="stats">
         <div><b id="sum-reps">0</b><span>reps</span></div>
@@ -189,13 +189,14 @@
         <div><b id="sum-streak">0</b><span>best streak</span></div>
       </div>
       <div class="sum-dots" id="sum-dots"></div>
-      <h3>How it changed</h3>
+      <h3 id="sum-trend-h">How it changed</h3>
       <ul class="trend" id="sum-trend"></ul>
       <div class="tip"><span>Next time</span><p id="sum-next"></p></div>
       <div class="row">
         <button class="btn primary" id="sum-again">Keep practising</button>
         <button class="btn" id="sum-test">Test yourself</button>
         <button class="btn ghost" id="sum-back">Lessons</button>
+        <button class="btn ghost" id="sum-export" title="Telemetry, reps, findings and summary as JSON">Download data</button>
       </div>
     </div>
   </section>

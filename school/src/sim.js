@@ -2,7 +2,7 @@
 // Fixed 960 Hz physics, a telemetry frame every 16 steps (60 Hz).
 // Every frame carries a snapshot, so any point can become a retry checkpoint.
 
-import { buildRoad, pointAt, project, LANE_CENTER } from './road.js';
+import { buildRoad, pointAt, project, LANE_CENTER, DS } from './road.js';
 import { createCar, stepCar, CAR, RPM } from './physics.js';
 import { createInstructor, observe, evaluate, noteGrind } from './instructor.js';
 
@@ -30,7 +30,8 @@ export function createSim(moment, snap = null) {
     sim.car = createCar({ x: p.x, z: p.z, h: p.h, v: st.v || 0, gear: st.gear ?? 1, auto: moment.transmission === 'auto' });
     sim.lead = moment.lead ? { s: moment.lead.s0, v: 0, phase: 0, pt: 0, done: false } : null;
   }
-  sim.proj = project(road, sim.car.x, sim.car.z);
+  // Start the road match from a known place: looping roads repeat the same lap, so a global match is ambiguous.
+  sim.proj = project(road, sim.car.x, sim.car.z, snap ? (snap.i ?? -1) : Math.round(moment.start.s / DS));
   sim.ins = createInstructor(moment, sim);
   record(sim, snap?.input || NEUTRAL);
   return sim;
@@ -46,7 +47,7 @@ function record(sim, inp) {
     gap: L ? L.s - p.s - (CAR.length + LEAD_LEN) / 2 : null,
     a: 0,
     // Long practice sessions keep frames light (no restorable snapshot per frame).
-    snap: sim.moment.continuous ? null : { car: { ...c }, lead: L ? { ...L } : null, t: sim.t, input: { ...inp } },
+    snap: sim.moment.continuous ? null : { car: { ...c }, lead: L ? { ...L } : null, t: sim.t, input: { ...inp }, i: p.i },
   };
   sim.frames.push(f);
   return f;

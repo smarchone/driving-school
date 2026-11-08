@@ -7,10 +7,15 @@ One core loop, repeated per *moment*:
 
 Run it:
 
-    make school          # serves the repo, open http://127.0.0.1:8000/school/
+    make school          # static server, open http://127.0.0.1:8000/school/
     node school/tools/check.mjs   # headless: every expert run passes its own moment; bad drivers get the right feedback
 
 Chrome is recommended (Gamepad API + speech voices). Press any wheel button once so the browser sees the wheel.
+
+Wheel calibration is saved once, in the browser (localStorage), and reused: "Looks right, continue" on the wheel check,
+the calibration wizard, or a pedal's Reverse button saves it. With a saved calibration the app opens on the lessons.
+No server is needed, so it runs as static files (e.g. GitHub Pages). localStorage belongs to one address: locally,
+use the same host and port each time (`127.0.0.1:8000` and `localhost:8000` are different).
 
 ## The ladder (skill graph)
 
@@ -19,6 +24,10 @@ Chrome is recommended (Gamepad API + speech voices). Press any wheel button once
 3. **Take the bend** — slow in, steer smooth
 4. **Creep in traffic** — clutch control, stop and go (behind an auto)
 5. **Hill start** — no roll-back (flyover ramp)
+
+**Free drive** (always open, below the ladder): a town loop with keep-left streets, four left-hand corners and a small
+flyover hump, about 900 m per lap, long enough for over an hour. No score, timer or ghost; the instructor speaks only when
+something goes wrong. Finish with Esc for a summary (distance, average speed, what came up) and the session download.
 
 ## How it fits together
 
@@ -52,3 +61,21 @@ Passing with assists off marks a moment *Mastered ★*.
 
 Known limits (M0): no force feedback in the browser (the wheel has no self-centring), keyboard is a fallback only,
 progress lives in this browser's localStorage, no learner model yet.
+
+## Session log (plug-in point for analysis / LLM agents)
+
+Every lesson visit writes into one in-memory object, `window.ds.session` (`src/session.js`, schema v1). Not persisted yet;
+"Download data" on the debrief and the practice summary saves it as JSON.
+
+| Part | What |
+|---|---|
+| `meta` | lesson, gearbox, kind (practice / test), input device, start/end time |
+| `runs[]` | each run (test, practice rep, retry from here): frame range, result, checks, metrics |
+| `reps[]` | each practice rep: clean?, assist level, checks, metrics (e.g. reaction_s, minGap, maxAccel, brakeAt), frame range |
+| `events[]` | every instructor finding: session time, rep, type, severity, cause (title), tip, frame index |
+| `frames` | telemetry columns at 60 Hz: `T t run s d v a rpm gear running e thr brk clu steer gap leadV` (units in `fields`) |
+| `ref` | the good run's frames, for comparisons |
+
+Helpers: `summary()` gives a compact brief for an LLM (context, reps, findings, per-check trend; no raw frames, ~2–3 KB);
+`slice(T0, T1, fields)` returns raw telemetry for a time window; `around(event, before, after, fields)` returns the
+telemetry around a finding; `toJSON()` returns everything.

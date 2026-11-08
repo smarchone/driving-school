@@ -54,5 +54,30 @@ const st = drive(lessons('auto')[1], (t, sim) => ({ steer: 0, throttle: 0, brake
 console.log(st.ins.stats.stalls === 0 ? 'PASS  auto-stop -> no stall' : 'FAIL  auto stalled');
 if (st.ins.stats.stalls) failed++;
 
+// Session log: frames, findings and reps line up, and slices/summaries work.
+{
+  const { createSession } = await import('../src/session.js');
+  const S = createSession({ lesson: 'moving-off', gearbox: 'manual', kind: 'test' });
+  // run 1: a clutch dump (stall), run 2: the good run
+  for (const fn of [t => ({ steer: 0, throttle: 0, brake: 0, clutch: t < 0.5 ? 1 : 0 }), null]) {
+    const m = MOMENTS[0];
+    const sim = createSim(m);
+    S.beginRun(sim, 'test');
+    const ctx = {};
+    while (!sim.ended && sim.t < (fn ? 4 : 40)) { stepSim(sim, fn ? fn(sim.t) : m.expert(sim, ctx, DT)); if (sim.step % 16 === 0) S.sync(sim); }
+    S.sync(sim);
+    S.endRun(sim.report || { passed: false, completed: false, criteria: [], stats: sim.ins.stats });
+  }
+  const stall = S.events.find(e => e.type === 'stall');
+  const around = stall && S.around(stall, 1, 0.2, ['T', 'clu', 'rpm']);
+  const sum = S.summary();
+  const ok = S.runs.length === 2 && S.runs[1].frameStart === S.runs[0].frameEnd
+    && stall && S.frames.T[stall.frame] === stall.T && around.T.length > 30 && around.rpm.at(-1) === 0
+    && S.frames.T.every((T, i) => i === 0 || T > S.frames.T[i - 1]) && JSON.stringify(sum).length < 20000;
+  console.log(ok ? `PASS  session -> ${S.length()} frames, ${S.runs.length} runs, ${S.events.length} findings, summary ${JSON.stringify(sum).length} bytes`
+    : 'FAIL  session log inconsistent');
+  if (!ok) failed++;
+}
+
 console.log(failed ? `\n${failed} failing` : '\nall good');
 process.exit(failed ? 1 : 0);
